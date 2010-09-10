@@ -23,6 +23,7 @@
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/amba/bus.h>
+#include <linux/amba/pl08x.h>
 #include <linux/amba/pl061.h>
 #include <linux/amba/mmci.h>
 #include <linux/amba/pl022.h>
@@ -181,7 +182,7 @@ APB_DEVICE(uart3, "fpga:uart3", EB_UART3, NULL);
 /* DevChip Primecells */
 AHB_DEVICE(smc,   "dev:smc",   EB_SMC,   NULL);
 AHB_DEVICE(clcd,  "dev:clcd",  EB_CLCD,  &clcd_plat_data);
-AHB_DEVICE(dmac,  "dev:dmac",  DMAC,     NULL);
+AHB_DEVICE(dmac,  "dev:dmac",  DMAC,     &pl081_plat_data);
 AHB_DEVICE(sctl,  "dev:sctl",  SCTL,     NULL);
 APB_DEVICE(wdog,  "dev:wdog",  EB_WATCHDOG, NULL);
 APB_DEVICE(gpio0, "dev:gpio0", EB_GPIO0, &gpio0_plat_data);

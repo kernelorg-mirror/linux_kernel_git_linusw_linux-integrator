@@ -23,9 +23,11 @@
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/amba/bus.h>
+#include <linux/amba/pl08x.h>
 #include <linux/amba/pl061.h>
 #include <linux/amba/mmci.h>
 #include <linux/amba/pl022.h>
+#include <linux/amba/serial.h>
 #include <linux/io.h>
 #include <linux/irqchip/arm-gic.h>
 #include <linux/platform_data/clk-realview.h>
@@ -119,8 +121,29 @@ static struct pl061_platform_data gpio2_plat_data = {
 
 static struct pl022_ssp_controller ssp0_plat_data = {
 	.bus_id = 0,
-	.enable_dma = 0,
 	.num_chipselect = 1,
+	.enable_dma = 1,
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "ssprx",
+	.dma_tx_param = (void *) "ssptx",
+};
+
+static struct amba_pl011_data uart0_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart0rx",
+	.dma_tx_param = (void *) "uart0tx",
+};
+
+static struct amba_pl011_data uart1_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart1rx",
+	.dma_tx_param = (void *) "uart1tx",
+};
+
+static struct amba_pl011_data uart2_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart2rx",
+	.dma_tx_param = (void *) "uart2tx",
 };
 
 /*
@@ -172,7 +195,7 @@ APB_DEVICE(ssp0,	"dev:ssp0",	PB11MP_SSP,	&ssp0_plat_data);
 
 /* Primecells on the NEC ISSP chip */
 AHB_DEVICE(clcd,	"issp:clcd",	PB11MP_CLCD,	&clcd_plat_data);
-AHB_DEVICE(dmac,	"issp:dmac",	DMAC,		NULL);
+AHB_DEVICE(dmac,	"issp:dmac",	DMAC,		&pl081_plat_data);
 
 static struct amba_device *amba_devs[] __initdata = {
 	&dmac_device,

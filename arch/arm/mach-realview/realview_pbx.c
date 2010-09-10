@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/amba/bus.h>
+#include <linux/amba/pl08x.h>
 #include <linux/amba/pl061.h>
 #include <linux/amba/mmci.h>
 #include <linux/amba/pl022.h>
@@ -190,7 +191,7 @@ APB_DEVICE(ssp0,	"dev:ssp0",	PBX_SSP,	&ssp0_plat_data);
 
 /* Primecells on the NEC ISSP chip */
 AHB_DEVICE(clcd,	"issp:clcd",	PBX_CLCD,	&clcd_plat_data);
-AHB_DEVICE(dmac,	"issp:dmac",	DMAC,		NULL);
+AHB_DEVICE(dmac,	"issp:dmac",	DMAC,		&pl081_plat_data);
 
 static struct amba_device *amba_devs[] __initdata = {
 	&dmac_device,

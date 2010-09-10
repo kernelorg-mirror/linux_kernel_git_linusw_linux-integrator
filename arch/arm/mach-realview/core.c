@@ -26,6 +26,10 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
 #include <linux/platform_data/video-clcd-versatile.h>
+#include <linux/amba/pl08x.h>
+#include <linux/amba/pl080.h>
+#include <linux/spinlock.h>
+#include <linux/amba/serial.h>
 #include <linux/io.h>
 #include <linux/smsc911x.h>
 #include <linux/smc91x.h>
@@ -242,7 +246,7 @@ struct mmci_platform_data realview_mmc1_plat_data = {
 	.status		= realview_mmc_status,
 	.gpio_wp	= 19,
 	.gpio_cd	= 18,
-	.cd_invert	= true,
+ 	.cd_invert	= true,
 };
 
 void __init realview_init_early(void)
@@ -351,6 +355,214 @@ struct clcd_board clcd_plat_data = {
 };
 
 /*
+ * DMA config
+ */
+
+/* State of the big DMA mux */
+static u32 current_dma_mux = 0x00;
+static u32 mux_users = 0x00;
+static spinlock_t current_dma_mux_lock;
+
+static int pl081_get_signal(const struct pl08x_channel_data *cd)
+{
+	unsigned long flags;
+	u32 val;
+
+	spin_lock_irqsave(&current_dma_mux_lock, flags);
+	/*
+	 * We're on the same mux so fine, go ahead!
+	 */
+	if (cd->muxval == current_dma_mux) {
+		mux_users ++;
+		spin_unlock_irqrestore(&current_dma_mux_lock, flags);
+		/* We still have to write it since it may be OFF by default */
+		val = readl(__io_address(REALVIEW_SYS_DMAPSR));
+		val &= 0xFFFFFFFCU;
+		val |= current_dma_mux;
+		writel(val, __io_address(REALVIEW_SYS_DMAPSR));
+		return cd->min_signal;
+	}
+	/*
+	 * If we're not on the same mux and there are already
+	 * users on the other mux setting, tough luck, the client
+	 * can come back and retry or give up and fall back to
+	 * PIO mode.
+	 */
+	if (mux_users) {
+		spin_unlock_irqrestore(&current_dma_mux_lock, flags);
+		return -EBUSY;
+	}
+
+	/* Switch mux setting */
+	current_dma_mux = cd->muxval;
+
+	val = readl(__io_address(REALVIEW_SYS_DMAPSR));
+	val &= 0xFFFFFFFCU;
+	val |= cd->muxval;
+	writel(val, __io_address(REALVIEW_SYS_DMAPSR));
+
+	pr_info("%s: muxing in %s in bank %d writing value "
+		"%08x to register %08x\n",
+		__func__, cd->bus_id, cd->muxval,
+		val, REALVIEW_SYS_DMAPSR);
+
+	spin_unlock_irqrestore(&current_dma_mux_lock, flags);
+
+	return cd->min_signal;
+}
+
+static void pl081_put_signal(const struct pl08x_channel_data *cd, int sig)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&current_dma_mux_lock, flags);
+	mux_users--;
+	spin_unlock_irqrestore(&current_dma_mux_lock, flags);
+}
+
+/* Muxed channels as found in most RealViews */
+struct pl08x_channel_data realview_chan_data[] = {
+	/* Muxed on signal bank 0 */
+	[0] = {
+		.bus_id = "usb0",
+		.min_signal = 0,
+		.max_signal = 0,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[1] = {
+		.bus_id = "usb1",
+		.min_signal = 1,
+		.max_signal = 1,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[2] = {
+		.bus_id = "t1dmac0",
+		.min_signal = 2,
+		.max_signal = 2,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[3] = {
+		.bus_id = "mci0",
+		.min_signal = 3,
+		.max_signal = 3,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[4] = {
+		.bus_id = "aacitx",
+		.min_signal = 4,
+		.max_signal = 4,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[5] = {
+		.bus_id = "aacirx",
+		.min_signal = 5,
+		.max_signal = 5,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[6] = {
+		.bus_id = "scirx",
+		.min_signal = 6,
+		.max_signal = 6,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[7] = {
+		.bus_id = "scitx",
+		.min_signal = 7,
+		.max_signal = 7,
+		.muxval = 0x00,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	/* Muxed on signal bank 1 */
+	[8] = {
+		.bus_id = "ssprx",
+		.min_signal = 0,
+		.max_signal = 0,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[9] = {
+		.bus_id = "ssptx",
+		.min_signal = 1,
+		.max_signal = 1,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[10] = {
+		.bus_id = "uart2rx",
+		.min_signal = 2,
+		.max_signal = 2,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[11] = {
+		.bus_id = "uart2tx",
+		.min_signal = 3,
+		.max_signal = 3,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[12] = {
+		.bus_id = "uart1rx",
+		.min_signal = 4,
+		.max_signal = 4,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[13] = {
+		.bus_id = "uart1tx",
+		.min_signal = 5,
+		.max_signal = 5,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[14] = {
+		.bus_id = "uart0rx",
+		.min_signal = 6,
+		.max_signal = 6,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	[15] = {
+		.bus_id = "uart0tx",
+		.min_signal = 7,
+		.max_signal = 7,
+		.muxval = 0x01,
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+};
+
+struct pl08x_platform_data pl081_plat_data = {
+	.memcpy_channel = {
+		.bus_id = "memcpy",
+		/*
+		 * We pass in some optimal memcpy config, the
+		 * driver will augment it if need be. 256 byte
+		 * bursts and 32bit bus width.
+		 */
+		.cctl_memcpy =
+		(PL080_BSIZE_256 << PL080_CONTROL_SB_SIZE_SHIFT |	\
+		 PL080_BSIZE_256 << PL080_CONTROL_DB_SIZE_SHIFT |	\
+		 PL080_WIDTH_32BIT << PL080_CONTROL_SWIDTH_SHIFT |	\
+		 PL080_WIDTH_32BIT << PL080_CONTROL_DWIDTH_SHIFT |	\
+		 PL080_CONTROL_PROT_BUFF |				\
+		 PL080_CONTROL_PROT_CACHE |				\
+		 PL080_CONTROL_PROT_SYS),
+		.periph_buses = PL08X_AHB1 | PL08X_AHB2,
+	},
+	.slave_channels = realview_chan_data,
+	.num_slave_channels = ARRAY_SIZE(realview_chan_data),
+	.get_signal = pl081_get_signal,
+	.put_signal = pl081_put_signal,
+};
+
+/*
  * Where is the timer (VA)?
  */
 void __iomem *timer0_va_base;
@@ -394,6 +606,7 @@ void __init realview_timer_init(unsigned int timer_irq)
  */
 void realview_fixup(struct tag *tags, char **from)
 {
+	spin_lock_init(&current_dma_mux_lock);
 	/*
 	 * Most RealView platforms have 512MB contiguous RAM at 0x70000000.
 	 * Half of this is mirrored at 0.
