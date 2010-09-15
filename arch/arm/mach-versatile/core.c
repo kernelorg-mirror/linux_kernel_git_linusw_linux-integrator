@@ -27,6 +27,10 @@
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/amba/bus.h>
+#include <linux/amba/pl08x.h>
+#include <linux/amba/pl080.h>
+#include <linux/spinlock.h>
+#include <linux/amba/serial.h>
 #include <linux/amba/clcd.h>
 #include <linux/platform_data/video-clcd-versatile.h>
 #include <linux/amba/pl061.h>
@@ -575,6 +579,413 @@ static struct clcd_board clcd_plat_data = {
 	.remove		= versatile_clcd_remove_dma,
 };
 
+/*
+ * DMA config
+ * The DMA channel routing is static on the PA926EJ-S
+ * and dynamic on the PB926EJ-S using SYS_DMAPSR0..SYS_DMAPSR2
+ */
+
+struct pb926ejs_dma_signal {
+	unsigned int id;
+	const struct pl08x_channel_data *user;
+	u32 ctrlreg;
+};
+
+/*
+ * The three first channels on ARM926EJ-S are muxed,
+ * but to make things simple we enable all channels
+ * to be muxed, however most of the channels will just
+ * me muxed on top of themselves.
+ */
+static struct pb926ejs_dma_signal pl080_muxtab[] = {
+	[0] = {
+		.id = 0,
+		.ctrlreg = VERSATILE_SYS_DMAPSR0,
+	},
+	[1] = {
+		.id = 1,
+		.ctrlreg = VERSATILE_SYS_DMAPSR1,
+	},
+	[2] = {
+		.id = 2,
+		.ctrlreg = VERSATILE_SYS_DMAPSR2,
+	},
+	[3] = {
+		.id = 3,
+	},
+	[4] = {
+		.id = 4,
+	},
+	[5] = {
+		.id = 5,
+	},
+	[6] = {
+		.id = 6,
+	},
+	[7] = {
+		.id = 7,
+	},
+	[8] = {
+		.id = 8,
+	},
+	[9] = {
+		.id = 9,
+	},
+	[10] = {
+		.id = 10,
+	},
+	[11] = {
+		.id = 11,
+	},
+	[12] = {
+		.id = 12,
+	},
+	[13] = {
+		.id = 13,
+	},
+	[14] = {
+		.id = 14,
+	},
+	[15] = {
+		.id = 15,
+	},
+};
+
+/* This is a lock for the above muxing array */
+static spinlock_t muxlock;
+
+static int pl080_get_signal(const struct pl08x_channel_data *cd)
+{
+	pr_debug("requesting DMA signal on channel %s\n", cd->bus_id);
+
+	/*
+	 * The AB926EJ-S is simple - only static assignments
+	 * so the channel is already muxed in and ready to go.
+	 */
+	if (machine_is_versatile_ab())
+		return cd->min_signal;
+
+	/* The PB926EJ-S is hairier */
+	if (machine_is_versatile_pb()) {
+		unsigned long flags;
+		int i;
+
+		if (cd->min_signal > ARRAY_SIZE(pl080_muxtab) ||
+		    cd->max_signal > ARRAY_SIZE(pl080_muxtab) ||
+		    (cd->max_signal < cd->min_signal)) {
+			pr_err("%s: illegal muxing constraints for %s\n",
+			       __func__, cd->bus_id);
+			return -EINVAL;
+		}
+		/* Try to find a signal to use */
+		spin_lock_irqsave(&muxlock, flags);
+		for (i = cd->min_signal; i <= cd->max_signal; i++) {
+			if (!pl080_muxtab[i].user) {
+				u32 val;
+
+				pl080_muxtab[i].user = cd;
+				/* If the channels need to be muxed in, mux them! */
+				if (pl080_muxtab[i].ctrlreg) {
+					val = readl(__io_address(pl080_muxtab[i].ctrlreg));
+					val &= 0xFFFFFF70U;
+					val |= 0x80; /* Turn on muxing */
+					val |= cd->muxval; /* Mux in the right peripheral */
+					writel(val, __io_address(pl080_muxtab[i].ctrlreg));
+					pr_debug("%s: muxing in %s at channel %d writing value "
+						 "%08x to register %08x\n",
+						 __func__, cd->bus_id, i,
+						 val, pl080_muxtab[i].ctrlreg);
+				}
+				spin_unlock_irqrestore(&muxlock, flags);
+				return pl080_muxtab[i].id;
+			}
+		}
+		spin_unlock_irqrestore(&muxlock, flags);
+	}
+
+	return -EBUSY;
+}
+
+static void pl080_put_signal(const struct pl08x_channel_data *cd, int sig)
+{
+	unsigned long flags;
+	int i;
+
+	pr_debug("releasing DMA signal on channel %s\n", cd->bus_id);
+	if (cd->min_signal > ARRAY_SIZE(pl080_muxtab) ||
+	    cd->max_signal > ARRAY_SIZE(pl080_muxtab) ||
+	    (cd->max_signal < cd->min_signal)) {
+		pr_err("%s: illegal muxing constraints for %s\n",
+		       __func__, cd->bus_id);
+		return;
+	}
+	spin_lock_irqsave(&muxlock, flags);
+	for (i = cd->min_signal; i <= cd->max_signal; i++) {
+		if (pl080_muxtab[i].user == cd) {
+			pl080_muxtab[i].user = NULL;
+			if (pl080_muxtab[i].ctrlreg) {
+				u32 val;
+
+				val = readl(__io_address(pl080_muxtab[i].ctrlreg));
+				val &= 0xFFFFFF70U; /* Disable, select no channel */
+				writel(val, __io_address(pl080_muxtab[i].ctrlreg));
+				pr_debug("%s: muxing out %s at channel %d writing value "
+				       "%08x to register %08x\n",
+				       __func__, cd->bus_id, i,
+				       val, pl080_muxtab[i].ctrlreg);
+			}
+			spin_unlock_irqrestore(&muxlock, flags);
+			return;
+		}
+	}
+	spin_unlock_irqrestore(&muxlock, flags);
+	pr_debug("%s: unable to release muxing on channel %s\n",
+	       __func__, cd->bus_id);
+}
+
+struct pl08x_platform_data pl080_plat_data = {
+	.memcpy_channel = {
+		.bus_id = "memcpy",
+		/*
+		 * We pass in some optimal memcpy config, the
+		 * driver will augment it if need be. 256 byte
+		 * bursts and 32bit bus width.
+		 */
+		.cctl_memcpy =
+		(PL080_BSIZE_256 << PL080_CONTROL_SB_SIZE_SHIFT |	\
+		 PL080_BSIZE_256 << PL080_CONTROL_DB_SIZE_SHIFT |	\
+		 PL080_WIDTH_32BIT << PL080_CONTROL_SWIDTH_SHIFT |	\
+		 PL080_WIDTH_32BIT << PL080_CONTROL_DWIDTH_SHIFT |	\
+		 PL080_CONTROL_PROT_BUFF |				\
+		 PL080_CONTROL_PROT_CACHE |				\
+		 PL080_CONTROL_PROT_SYS),
+	},
+	.get_signal = pl080_get_signal,
+	.put_signal = pl080_put_signal,
+};
+
+static struct pl08x_channel_data ab926ejs_chan_data[] = {
+	[0] = {
+		.bus_id = "aacirx",
+		.min_signal = 0,
+		.max_signal = 0,
+	},
+	[1] = {
+		.bus_id = "aacitx",
+		.min_signal = 1,
+		.max_signal = 1,
+	},
+	[2] = {
+		.bus_id = "mci0",
+		.min_signal = 2,
+		.max_signal = 2,
+	},
+	[3] = {
+		.bus_id = "reserved",
+		.min_signal = 3,
+		.max_signal = 3,
+	},
+	[4] = {
+		.bus_id = "reserved",
+		.min_signal = 4,
+		.max_signal = 4,
+	},
+	[5] = {
+		.bus_id = "reserved",
+		.min_signal = 5,
+		.max_signal = 5,
+	},
+	[6] = {
+		.bus_id = "scirx",
+		.min_signal = 6,
+		.max_signal = 6,
+	},
+	[7] = {
+		.bus_id = "scitx",
+		.min_signal = 7,
+		.max_signal = 7,
+	},
+	[8] = {
+		.bus_id = "ssprx",
+		.min_signal = 8,
+		.max_signal = 8,
+	},
+	[9] = {
+		.bus_id = "ssptx",
+		.min_signal = 9,
+		.max_signal = 9,
+	},
+	[10] = {
+		.bus_id = "uart2rx",
+		.min_signal = 10,
+		.max_signal = 10,
+	},
+	[11] = {
+		.bus_id = "uart2tx",
+		.min_signal = 11,
+		.max_signal = 11,
+	},
+	[12] = {
+		.bus_id = "uart1rx",
+		.min_signal = 12,
+		.max_signal = 12,
+	},
+	[13] = {
+		.bus_id = "uart1tx",
+		.min_signal = 13,
+		.max_signal = 13,
+	},
+	[14] = {
+		.bus_id = "uart0rx",
+		.min_signal = 14,
+		.max_signal = 14,
+	},
+	[15] = {
+		.bus_id = "uart0tx",
+		.min_signal = 15,
+		.max_signal = 15,
+	},
+};
+
+/* For the PB926EJ-S we define some extra virtual channels */
+static struct pl08x_channel_data pb926ejs_chan_data[] = {
+	[0] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "aacitx",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x00,
+	},
+	[1] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "aacirx",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x01,
+	},
+	[2] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "usba",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x02,
+	},
+	[3] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "usbb",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x03,
+	},
+	[4] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "mci0",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x04,
+	},
+	[5] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "mci1",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x05,
+	},
+	[6] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "uart3tx",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x06,
+	},
+	[7] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "uart3rx",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x07,
+	},
+	[8] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "sciinta",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x08,
+	},
+	[9] = {
+		/* Muxed on channel 0-3 */
+		.bus_id = "sciintb",
+		.min_signal = 0,
+		.max_signal = 2,
+		.muxval = 0x09,
+	},
+	[10] = {
+		.bus_id = "scirx",
+		.min_signal = 6,
+		.max_signal = 6,
+	},
+	[11] = {
+		.bus_id = "scitx",
+		.min_signal = 7,
+		.max_signal = 7,
+	},
+	[12] = {
+		.bus_id = "ssprx",
+		.min_signal = 8,
+		.max_signal = 8,
+	},
+	[13] = {
+		.bus_id = "ssptx",
+		.min_signal = 9,
+		.max_signal = 9,
+	},
+	[14] = {
+		.bus_id = "uart2rx",
+		.min_signal = 10,
+		.max_signal = 10,
+	},
+	[15] = {
+		.bus_id = "uart2tx",
+		.min_signal = 11,
+		.max_signal = 11,
+	},
+	[16] = {
+		.bus_id = "uart1rx",
+		.min_signal = 12,
+		.max_signal = 12,
+	},
+	[17] = {
+		.bus_id = "uart1tx",
+		.min_signal = 13,
+		.max_signal = 13,
+	},
+	[18] = {
+		.bus_id = "uart0rx",
+		.min_signal = 14,
+		.max_signal = 14,
+	},
+	[19] = {
+		.bus_id = "uart0tx",
+		.min_signal = 15,
+		.max_signal = 15,
+	},
+};
+
+static void __init pl080_fixup(void)
+{
+	spin_lock_init(&muxlock);
+	if (machine_is_versatile_ab()) {
+		pl080_plat_data.slave_channels = ab926ejs_chan_data;
+		pl080_plat_data.num_slave_channels =
+			ARRAY_SIZE(ab926ejs_chan_data);
+	}
+	if (machine_is_versatile_pb()) {
+		pl080_plat_data.slave_channels = pb926ejs_chan_data;
+		pl080_plat_data.num_slave_channels =
+			ARRAY_SIZE(pb926ejs_chan_data);
+	}
+}
+
 static struct pl061_platform_data gpio0_plat_data = {
 	.gpio_base	= 0,
 	.irq_base	= IRQ_GPIO0_START,
@@ -599,6 +1010,24 @@ static struct pl022_ssp_controller ssp0_plat_data = {
 	.bus_id = 0,
 	.enable_dma = 0,
 	.num_chipselect = 1,
+};
+
+static struct amba_pl011_data uart0_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart0rx",
+	.dma_tx_param = (void *) "uart0tx",
+};
+
+static struct amba_pl011_data uart1_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart1rx",
+	.dma_tx_param = (void *) "uart1tx",
+};
+
+static struct amba_pl011_data uart2_plat_data = {
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart2rx",
+	.dma_tx_param = (void *) "uart2tx",
 };
 
 #define AACI_IRQ	{ IRQ_AACI }
@@ -644,7 +1073,8 @@ APB_DEVICE(kmi1,  "fpga:07", KMI1,     NULL);
 AHB_DEVICE(smc,   "dev:00",  SMC,      NULL);
 AHB_DEVICE(mpmc,  "dev:10",  MPMC,     NULL);
 AHB_DEVICE(clcd,  "dev:20",  CLCD,     &clcd_plat_data);
-AHB_DEVICE(dmac,  "dev:30",  DMAC,     NULL);
+AHB_DEVICE(dmac0, "dev:30",  DMAC,     &pl080_plat_data);
+AHB_DEVICE(dmac1, "dev:30",  DMAC,     NULL);
 APB_DEVICE(sctl,  "dev:e0",  SCTL,     NULL);
 APB_DEVICE(wdog,  "dev:e1",  WATCHDOG, NULL);
 APB_DEVICE(gpio0, "dev:e4",  GPIO0,    &gpio0_plat_data);
@@ -653,13 +1083,14 @@ APB_DEVICE(gpio2, "dev:e6",  GPIO2,    &gpio2_plat_data);
 APB_DEVICE(gpio3, "dev:e7",  GPIO3,    &gpio3_plat_data);
 APB_DEVICE(rtc,   "dev:e8",  RTC,      NULL);
 APB_DEVICE(sci0,  "dev:f0",  SCI,      NULL);
-APB_DEVICE(uart0, "dev:f1",  UART0,    NULL);
-APB_DEVICE(uart1, "dev:f2",  UART1,    NULL);
-APB_DEVICE(uart2, "dev:f3",  UART2,    NULL);
+APB_DEVICE(uart0, "dev:f1",  UART0,    &uart0_plat_data);
+APB_DEVICE(uart1, "dev:f2",  UART1,    &uart1_plat_data);
+APB_DEVICE(uart2, "dev:f3",  UART2,    &uart2_plat_data);
 APB_DEVICE(ssp0,  "dev:f4",  SSP,      &ssp0_plat_data);
 
 static struct amba_device *amba_devs[] __initdata = {
-	&dmac_device,
+	&dmac0_device,
+	&dmac1_device,
 	&uart0_device,
 	&uart1_device,
 	&uart2_device,
@@ -774,6 +1205,7 @@ void __init versatile_init(void)
 	platform_device_register(&smc91x_device);
 	platform_device_register(&char_lcd_device);
 	platform_device_register(&leds_device);
+	pl080_fixup();
 
 	for (i = 0; i < ARRAY_SIZE(amba_devs); i++) {
 		struct amba_device *d = amba_devs[i];

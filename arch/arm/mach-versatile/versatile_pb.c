@@ -24,6 +24,8 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl061.h>
 #include <linux/amba/mmci.h>
+#include <linux/amba/serial.h>
+#include <linux/amba/pl08x.h>
 #include <linux/io.h>
 
 #include <mach/hardware.h>
@@ -45,6 +47,19 @@ static struct mmci_platform_data mmc1_plat_data = {
 	.status		= mmc_status,
 	.gpio_wp	= -1,
 	.gpio_cd	= -1,
+#ifdef CONFIG_AMBA_PL08X
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "mci1",
+	/* Don't specify a TX channel, this RX channel is bidirectional */
+#endif
+};
+
+static struct amba_pl011_data uart3_plat_data = {
+#ifdef CONFIG_AMBA_PL08X
+	.dma_filter = pl08x_filter_id,
+	.dma_rx_param = (void *) "uart3rx",
+	.dma_tx_param = (void *) "uart3tx",
+#endif
 };
 
 #define UART3_IRQ	{ IRQ_SIC_UART3 }
@@ -56,7 +71,7 @@ static struct mmci_platform_data mmc1_plat_data = {
  */
 
 /* FPGA Primecells */
-APB_DEVICE(uart3, "fpga:09", UART3,    NULL);
+APB_DEVICE(uart3, "fpga:09", UART3,    &uart3_plat_data);
 APB_DEVICE(sci1,  "fpga:0a", SCI1,     NULL);
 APB_DEVICE(mmc1,  "fpga:0b", MMCI1,    &mmc1_plat_data);
 
