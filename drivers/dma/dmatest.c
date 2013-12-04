@@ -25,7 +25,7 @@ static bool nobounce;
 module_param(nobounce, bool, 0644);
 MODULE_PARM_DESC(nobounce, "Prevent using swiotlb buffer (default: use swiotlb buffer)");
 
-static unsigned int test_buf_size = 16384;
+static unsigned int test_buf_size = 65536;
 module_param(test_buf_size, uint, 0644);
 MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
 
@@ -158,7 +158,7 @@ static const struct kernel_param_ops run_ops = {
 	.set = dmatest_run_set,
 	.get = dmatest_run_get,
 };
-static bool dmatest_run;
+static bool dmatest_run = true;
 module_param_cb(run, &run_ops, &dmatest_run, 0644);
 MODULE_PARM_DESC(run, "Run the test (default: false)");
 
