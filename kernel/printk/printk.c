@@ -2374,6 +2374,20 @@ int vprintk_store(int facility, int level,
 		memcpy(&r.info->dev_info, dev_info, sizeof(r.info->dev_info));
 	printk_store_execution_ctx(r.info);
 
+#if defined(CONFIG_ARM) && defined(CONFIG_DEBUG_LL)
+			{
+				static char foo[1024];
+				extern void printascii(char *);
+				int len;
+
+				len = text_len + trunc_msg_len;
+				memcpy(foo, &r.text_buf[0], len);
+				foo[len] = '\n';
+				foo[len+1] = '\0';
+				printascii(foo);
+			}
+#endif
+
 	/* A message without a trailing newline can be continued. */
 	if (!(flags & LOG_NEWLINE))
 		prb_commit(&e);
