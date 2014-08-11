@@ -903,6 +903,13 @@ void start_kernel(void)
 	debug_objects_early_init();
 	init_vmlinux_build_id();
 
+#if defined(CONFIG_ARM) && defined(CONFIG_DEBUG_LL)
+	{
+	  extern void printascii(char *);
+	  printascii("start_kernel\n");
+	}
+#endif
+
 	cgroup_init_early();
 
 	local_irq_disable();
