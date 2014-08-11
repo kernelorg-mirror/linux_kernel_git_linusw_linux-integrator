@@ -855,6 +855,13 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	smp_setup_processor_id();
 	debug_objects_early_init();
 
+#if defined(CONFIG_ARM) && defined(CONFIG_DEBUG_LL)
+	{
+	  extern void printascii(char *);
+	  printascii("start_kernel\n");
+	}
+#endif
+
 	cgroup_init_early();
 
 	local_irq_disable();
