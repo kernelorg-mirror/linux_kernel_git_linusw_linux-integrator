@@ -215,7 +215,7 @@ struct platform_device h3xxx_micro_asic = {
 static struct platform_device *h3xxx_devices[] = {
 	&h3xxx_egpio,
 	&h3xxx_keys,
-	&h3xxx_micro_asic,
+	// &h3xxx_micro_asic,
 };
 
 static struct gpiod_lookup_table h3xxx_pcmcia_gpio_table = {
