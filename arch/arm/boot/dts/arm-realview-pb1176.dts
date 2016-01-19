@@ -313,6 +313,49 @@
 			};
 		};
 
+		etb@10131000 {
+			compatible = "arm,coresight-etb10", "arm,primecell";
+			reg = <0x10131000 0x1000>;
+			clocks = <&pclk>;
+			clock-names = "apb_pclk";
+
+			port {
+				etb_in: endpoint {
+					slave-mode;
+					remote-endpoint = <&etm_out0>;
+				};
+			};
+		};
+
+		etm@10132000 {
+			compatible = "arm,coresight-etm11", "arm,primecell";
+			reg = <0x10132000 0x1000>;
+			clocks = <&pclk>;
+			clock-names = "apb_pclk";
+			// cpu = <&CPU0>;
+			port {
+				etm_out0: endpoint0 {
+					remote-endpoint = <&etb_in>;
+				};
+				etm_out1: endpoint1 {
+					remote-endpoint = <&tpiu_in>;
+				};
+			};
+		};
+
+		tpiu@10135000 {
+			compatible = "arm,coresight-tpiu", "arm,primecell";
+			reg = <0x10135000 0x1000>;
+			clocks = <&pclk>;
+			clock-names = "apb_pclk";
+			port {
+				tpiu_in: endpoint {
+					slave-mode;
+					remote-endpoint = <&etm_out1>;
+				};
+			};
+		};
+
 		/* Primary DevChip GIC synthesized with the CPU */
 		intc_dc1176: interrupt-controller@10120000 {
 			compatible = "arm,arm1176jzf-devchip-gic", "arm,arm11mp-gic";
