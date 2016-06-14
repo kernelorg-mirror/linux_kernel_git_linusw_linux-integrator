@@ -391,6 +391,33 @@
 			};
 		};
 
+		qcom,ssbi@c00000 {
+			compatible = "qcom,ssbi";
+			reg = <0xc00000 0x1000>;
+			qcom,controller-type = "pmic-arbiter";
+
+			pm8901: pmic@0 {
+				compatible = "qcom,pm8901";
+				interrupt-parent = <&tlmm>;
+				interrupts = <91 8>;
+				#interrupt-cells = <2>;
+				interrupt-controller;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				pm8901_mpps: mpps@27 {
+					compatible = "qcom,pm8901-mpp",
+						     "qcom,ssbi-mpp";
+					reg = <0x27>;
+					gpio-controller;
+					#gpio-cells = <2>;
+					interrupt-parent = <&pm8901>;
+					interrupts =
+					<128 1>, <129 1>, <130 1>, <131 1>;
+				};
+			};
+		};
+
 		l2cc: clock-controller@2082000 {
 			compatible = "qcom,kpss-gcc", "syscon";
 			reg = <0x02082000 0x1000>;
