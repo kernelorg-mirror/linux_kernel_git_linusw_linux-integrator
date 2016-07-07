@@ -50,6 +50,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
 #include <linux/gpio/consumer.h>
+#include <linux/pm_wakeirq.h>
 
 #include "smsc911x.h"
 
@@ -137,6 +138,9 @@ struct smsc911x_data {
 
 	/* Reset GPIO */
 	struct gpio_desc *reset_gpiod;
+
+	/* PME interrupt */
+	int pme_irq;
 
 	/* clock */
 	struct clk *clk;
@@ -1584,6 +1588,19 @@ static irqreturn_t smsc911x_irqhandler(int irq, void *dev_id)
 	return serviced;
 }
 
+static irqreturn_t smsc911x_pme_irq_thread(int irq, void *dev_id)
+{
+	struct net_device *dev = dev_id;
+	struct smsc911x_data *pdata __maybe_unused = netdev_priv(dev);
+
+	SMSC_TRACE(pdata, pm, "wakeup event");
+	pm_wakeup_event(&dev->dev, 50);
+	/* This signal is active for 50 ms, wait for it to deassert */
+	usleep_range(50000, 100000);
+
+	return IRQ_HANDLED;
+}
+
 static int smsc911x_open(struct net_device *dev)
 {
 	struct smsc911x_data *pdata = netdev_priv(dev);
@@ -1696,6 +1713,27 @@ static int smsc911x_open(struct net_device *dev)
 	netdev_info(dev, "SMSC911x/921x identified at %#08lx, IRQ: %d\n",
 		    (unsigned long)pdata->ioaddr, dev->irq);
 
+
+	/* It's perfectly fine to not have a PME IRQ */
+	if (pdata->pme_irq > 0) {
+		/*
+		 * The Power Management Event (PME) IRQ appears as
+		 * a pulse waking up the system from sleep in response to  a
+		 * network event.
+		 */
+		retval = request_threaded_irq(pdata->pme_irq, NULL,
+					      smsc911x_pme_irq_thread,
+					      IRQF_ONESHOT, "smsc911x-pme",
+					      dev);
+		if (retval) {
+			SMSC_WARN(pdata, ifup,
+			"Unable to claim requested PME irq: %d", pdata->pme_irq);
+			goto irq_stop_out;
+		}
+		device_init_wakeup(&dev->dev, true);
+		dev_pm_set_wake_irq(&dev->dev, pdata->pme_irq);
+	}
+
 	/* Reset the last known duplex and carrier */
 	pdata->last_duplex = -1;
 	pdata->last_carrier = -1;
@@ -1765,6 +1803,8 @@ static int smsc911x_stop(struct net_device *dev)
 	smsc911x_tx_update_txcounters(dev);
 
 	free_irq(dev->irq, dev);
+	if (pdata->pme_irq)
+		free_irq(pdata->pme_irq, dev);
 
 	/* Bring the PHY down */
 	if (dev->phydev) {
@@ -2414,7 +2454,7 @@ static int smsc911x_drv_probe(struct platform_device *pdev)
 	struct smsc911x_data *pdata;
 	struct smsc911x_platform_config *config = dev_get_platdata(&pdev->dev);
 	struct resource *res;
-	int res_size, irq;
+	int res_size, irq, pme_irq;
 	int retval;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
@@ -2438,6 +2478,12 @@ static int smsc911x_drv_probe(struct platform_device *pdev)
 		goto out_0;
 	}
 
+	pme_irq = platform_get_irq(pdev, 1);
+	if (pme_irq == -EPROBE_DEFER) {
+		retval = -EPROBE_DEFER;
+		goto out_0;
+	}
+
 	if (!request_mem_region(res->start, res_size, SMSC_CHIPNAME)) {
 		retval = -EBUSY;
 		goto out_0;
@@ -2453,6 +2499,7 @@ static int smsc911x_drv_probe(struct platform_device *pdev)
 
 	pdata = netdev_priv(dev);
 	dev->irq = irq;
+	pdata->pme_irq = pme_irq;
 	pdata->ioaddr = ioremap(res->start, res_size);
 	if (!pdata->ioaddr) {
 		retval = -ENOMEM;
