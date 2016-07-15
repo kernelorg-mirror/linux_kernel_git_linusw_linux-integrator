@@ -40,9 +40,8 @@
 	};
 
 	memory {
-		device_type = "memory";
-		/* 128 MiB memory @ 0x0 */
-		reg = <0x00000000 0x08000000>;
+		/* 256 MiB alias of baseboard DDR @ 0x0 */
+		reg = <0x00000000 0x10000000>;
 	};
 
 	/* The voltage to the MMC card is hardwired at 3.3V */

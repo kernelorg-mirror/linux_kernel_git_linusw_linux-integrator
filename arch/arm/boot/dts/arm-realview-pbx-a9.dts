@@ -60,6 +60,15 @@
 		};
 	};
 
+	/*
+	 * There is 1GB of RAM total, but using all of it will require
+	 * bootloader changes to not load the kernel to the alias at 0x0.
+	 */
+	memory {
+		/*reg = <0x20000000 0x20000000>, /* 512 MiB daughterboard DDR2 */
+		/*      <0x70000000 0x20000000>; /* 512 MiB baseboard DDR */
+	};
+
 	L2: cache-controller {
 		compatible = "arm,pl310-cache";
 		reg = <0x1f002000 0x1000>;
