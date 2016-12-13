@@ -482,6 +482,57 @@
 			};
 		};
 
+
+		sdcc1bam: dma@12402000{
+			compatible = "qcom,bam-v1.2.0";
+			reg = <0x12402000 0x2000>;
+			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc SDC1_H_CLK>;
+			clock-names = "bam_clk";
+			#dma-cells = <1>;
+			qcom,ee = <0>;
+		};
+
+		sdcc2bam: dma@12142000{
+			compatible = "qcom,bam-v1.2.0";
+			reg = <0x12142000 0x2000>;
+			interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc SDC2_H_CLK>;
+			clock-names = "bam_clk";
+			#dma-cells = <1>;
+			qcom,ee = <0>;
+		};
+
+		sdcc3bam: dma@12182000{
+			compatible = "qcom,bam-v1.2.0";
+			reg = <0x12182000 0x2000>;
+			interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc SDC3_H_CLK>;
+			clock-names = "bam_clk";
+			#dma-cells = <1>;
+			qcom,ee = <0>;
+		};
+
+		sdcc4bam: dma@121c2000{
+			compatible = "qcom,bam-v1.2.0";
+			reg = <0x121c2000 0x2000>;
+			interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc SDC4_H_CLK>;
+			clock-names = "bam_clk";
+			#dma-cells = <1>;
+			qcom,ee = <0>;
+		};
+
+		sdcc5bam: dma@12202000{
+			compatible = "qcom,bam-v1.2.0";
+			reg = <0x12202000 0x2000>;
+			interrupts = <GIC_SPI 187 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc SDC5_H_CLK>;
+			clock-names = "bam_clk";
+			#dma-cells = <1>;
+			qcom,ee = <0>;
+		};
+
 		amba {
 			compatible = "simple-bus";
 			#address-cells = <1>;
@@ -496,11 +547,14 @@
 				interrupt-names = "cmd_irq";
 				clocks = <&gcc SDC1_CLK>, <&gcc SDC1_H_CLK>;
 				clock-names = "mclk", "apb_pclk";
+				dmas = <&sdcc1bam 2>, <&sdcc1bam 1>;
+				dma-names = "tx", "rx";
 				bus-width = <8>;
 				max-frequency = <48000000>;
 				non-removable;
 				cap-sd-highspeed;
 				cap-mmc-highspeed;
+
 			};
 
 			sdcc2: mmc@12140000 {
@@ -512,6 +566,8 @@
 				interrupt-names = "cmd_irq";
 				clocks = <&gcc SDC2_CLK>, <&gcc SDC2_H_CLK>;
 				clock-names = "mclk", "apb_pclk";
+				dmas = <&sdcc2bam 2>, <&sdcc2bam 1>;
+				dma-names = "tx", "rx";
 				bus-width = <8>;
 				max-frequency = <48000000>;
 				cap-sd-highspeed;
@@ -527,6 +583,8 @@
 				interrupt-names = "cmd_irq";
 				clocks = <&gcc SDC3_CLK>, <&gcc SDC3_H_CLK>;
 				clock-names = "mclk", "apb_pclk";
+				dmas = <&sdcc3bam 2>, <&sdcc3bam 1>;
+				dma-names = "tx", "rx";
 				bus-width = <4>;
 				cap-sd-highspeed;
 				cap-mmc-highspeed;
@@ -543,6 +601,8 @@
 				interrupt-names = "cmd_irq";
 				clocks = <&gcc SDC4_CLK>, <&gcc SDC4_H_CLK>;
 				clock-names = "mclk", "apb_pclk";
+				dmas = <&sdcc4bam 2>, <&sdcc4bam 1>;
+				dma-names = "tx", "rx";
 				bus-width = <4>;
 				max-frequency = <48000000>;
 				cap-sd-highspeed;
@@ -558,6 +618,8 @@
 				interrupt-names = "cmd_irq";
 				clocks = <&gcc SDC5_CLK>, <&gcc SDC5_H_CLK>;
 				clock-names = "mclk", "apb_pclk";
+				dmas = <&sdcc5bam 2>, <&sdcc5bam 1>;
+				dma-names = "tx", "rx";
 				bus-width = <4>;
 				cap-sd-highspeed;
 				cap-mmc-highspeed;
