@@ -1,10 +1,11 @@
-Qualcomm LPASS Clock & Reset Controller Binding
-------------------------------------------------
+Qualcomm Low-power Audio Subsystem (LPASS) Clock & Reset Controller Binding
+---------------------------------------------------------------------------
 
 Required properties :
 - compatible : shall contain only one of the following:
 
 			"qcom,lcc-msm8960"
+			"qcom,lcc-msm8660"
 			"qcom,lcc-apq8064"
 			"qcom,lcc-ipq8064"
 			"qcom,lcc-mdm9615"
