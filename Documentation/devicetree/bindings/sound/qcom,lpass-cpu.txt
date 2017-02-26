@@ -1,12 +1,27 @@
 * Qualcomm Technologies LPASS CPU DAI
 
-This node models the Qualcomm Technologies Low-Power Audio SubSystem (LPASS).
+This node models the Qualcomm Technologies Low-Power Audio SubSystem (LPASS)
+digital audio interface.
+
+This hardware block contains a Qualcomm Hexagon QDSP6 variant with its own
+memory and a set of clock generators for the subsystem itself and the different
+I2S and PCM channels. The idea is that this subsystem should be able to stream
+audio autonomously while the rest of the system goes into suspend.
+
+The block has a separate binding for its clock generators, see
+clock/qcom,lcc.txt for details.
+
+The block has a separate binding for its audio DSP, see
+remoteproc/qcom,adsp.txt for details.
 
 Required properties:
 
-- compatible		: "qcom,lpass-cpu" or "qcom,apq8016-lpass-cpu"
+- compatible		: one of
+				* "qcom,lpass-cpu"
+				* "qcom,apq8016-lpass-cpu"
+				* "qcom,msm8660-lpass-cpu"
 - clocks		: Must contain an entry for each entry in clock-names.
-- clock-names		: A list which must include the following entries:
+- clock-names		: required clocks for "qcom,lpass-cpu":
 				* "ahbix-clk"
 				* "mi2s-osr-clk"
 				* "mi2s-bit-clk"
@@ -18,6 +33,17 @@ Required properties:
 				* "mi2s-bit-clk3"
 				* "pcnoc-mport-clk"
 				* "pcnoc-sway-clk"
+			: required clocks for "qcom,lpass-cpu-msm8660"
+				* "mi2s-osr-clk"
+				* "mi2s-bit-clk"
+				* "codec-i2s-mic-osr-clk"
+				* "codec-i2s-mic-bit-clk"
+				* "spare-i2s-mic-osr-clk"
+				* "spare-i2s-mic-bit-clk"
+				* "codec-i2s-spkr-osr-clk"
+				* "codec-i2s-spkr-bit-clk"
+				* "spare-i2s-spkr-osr-clk"
+				* "spare-i2s-spkr-bit-clk"
 
 - interrupts		: Must contain an entry for each entry in
 			  interrupt-names.
