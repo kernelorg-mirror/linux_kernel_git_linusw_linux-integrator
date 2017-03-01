@@ -233,6 +233,7 @@ static struct lpass_variant apq8016_data = {
 				"mi2s-bit-clk2",
 				"mi2s-bit-clk3",
 				},
+	.has_ahbix_clock	= true,
 	.init			= apq8016_lpass_init,
 	.exit			= apq8016_lpass_exit,
 	.alloc_dma_channel	= apq8016_lpass_alloc_dma_channel,

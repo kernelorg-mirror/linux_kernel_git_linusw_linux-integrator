@@ -89,6 +89,7 @@ struct lpass_variant {
 	int num_dai;
 	const char * const *dai_osr_clk_names;
 	const char * const *dai_bit_clk_names;
+	bool has_ahbix_clock;
 };
 
 /* register the platform driver from the CPU DAI driver */

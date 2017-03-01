@@ -594,25 +594,31 @@ int asoc_qcom_lpass_cpu_platform_probe(struct platform_device *pdev)
 		}
 	}
 
-	drvdata->ahbix_clk = devm_clk_get(dev, "ahbix-clk");
-	if (IS_ERR(drvdata->ahbix_clk)) {
-		dev_err(dev, "error getting ahbix-clk: %ld\n",
-			PTR_ERR(drvdata->ahbix_clk));
-		return PTR_ERR(drvdata->ahbix_clk);
-	}
+	if (variant->has_ahbix_clock) {
+		drvdata->ahbix_clk = devm_clk_get(dev, "ahbix-clk");
+		if (IS_ERR(drvdata->ahbix_clk)) {
+			dev_err(dev, "error getting ahbix-clk: %ld\n",
+				PTR_ERR(drvdata->ahbix_clk));
+			return PTR_ERR(drvdata->ahbix_clk);
+		}
 
-	ret = clk_set_rate(drvdata->ahbix_clk, LPASS_AHBIX_CLOCK_FREQUENCY);
-	if (ret) {
-		dev_err(dev, "error setting rate on ahbix_clk: %d\n", ret);
-		return ret;
-	}
-	dev_dbg(dev, "set ahbix_clk rate to %lu\n",
-		clk_get_rate(drvdata->ahbix_clk));
+		ret = clk_set_rate(drvdata->ahbix_clk,
+				   LPASS_AHBIX_CLOCK_FREQUENCY);
+		if (ret) {
+			dev_err(dev,
+				"error setting rate on ahbix_clk: %d\n",
+				ret);
+			return ret;
+		}
+		dev_dbg(dev, "set ahbix_clk rate to %lu\n",
+			clk_get_rate(drvdata->ahbix_clk));
 
-	ret = clk_prepare_enable(drvdata->ahbix_clk);
-	if (ret) {
-		dev_err(dev, "error enabling ahbix_clk: %d\n", ret);
-		return ret;
+		ret = clk_prepare_enable(drvdata->ahbix_clk);
+		if (ret) {
+			dev_err(dev, "error enabling ahbix_clk: %d\n",
+				ret);
+			return ret;
+		}
 	}
 
 	ret = devm_snd_soc_register_component(dev,
