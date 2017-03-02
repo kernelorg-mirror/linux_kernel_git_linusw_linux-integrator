@@ -1997,6 +1997,7 @@ static int mmci_probe(struct amba_device *dev,
 	struct variant_data *variant = id->data;
 	struct mmci_host *host;
 	struct mmc_host *mmc;
+	struct gpio_desc *ubm2_pwdn;
 	int ret;
 
 	/* Must have platform data or Device Tree. */
@@ -2049,6 +2050,14 @@ static int mmci_probe(struct amba_device *dev,
 	host->hw_revision = amba_rev(dev);
 	dev_dbg(mmc_dev(mmc), "designer ID = 0x%02x\n", host->hw_designer);
 	dev_dbg(mmc_dev(mmc), "revision = 0x%01x\n", host->hw_revision);
+
+	ubm2_pwdn = devm_gpiod_get(&dev->dev, "ubm2", GPIOD_OUT_HIGH);
+	if (IS_ERR(ubm2_pwdn))
+		dev_info(&dev->dev, "could not get UBM2 GPIO\n");
+	else {
+		gpiod_set_value_cansleep(ubm2_pwdn, 1);
+		dev_info(&dev->dev, "initialized UBM2 GPIO\n");
+	}
 
 	host->clk = devm_clk_get(&dev->dev, NULL);
 	if (IS_ERR(host->clk)) {

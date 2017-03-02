@@ -301,6 +301,16 @@
 							power-source = <PM8058_GPIO_S3>;
 						};
 					};
+					dragon_ubm2_gpios: ubm2-state {
+						pinconf {
+							pins = "gpio20";
+							function = "normal";
+							input-enable;
+							bias-pull-up;
+							qcom,pull-up-strength = <PMIC_GPIO_PULL_UP_30>;
+							power-source = <PM8058_GPIO_S3>;
+						};
+					};
 					dragon_sdcc3_gpios: sdcc3-state {
 						pinconf {
 							pins = "gpio22";
@@ -926,16 +936,23 @@
 			/*
 			 * Second external micro SD card, using two TXB104RGYR levelshifters
 			 * to lift from 1.8 V to 2.85 V
+			 * USES A GPIO for "UBM2" investigate this!
+			 * UBM2 = Universal Broadcast Modem, MBP2600
+			 * UBM2_RESET_N
+			 * UBM2_PWDN - TLMM GPIO 93
+			 * UBM2_INT - PM8058 GPIO 20
 			 */
 			mmc@12200000 {
 				status = "okay";
 				/* Enable SSBI GPIO 26 as input, use for card detect */
 				pinctrl-names = "default";
-				pinctrl-0 = <&dragon_sdcc5_pins>, <&dragon_sdcc5_gpios>;
+				pinctrl-0 = <&dragon_sdcc5_pins>, <&dragon_sdcc5_gpios>, <&dragon_ubm2_gpios>;
 				cd-gpios = <&pm8058_gpio 26 GPIO_ACTIVE_LOW>;
 				wp-gpios = <&tlmm 106 GPIO_ACTIVE_HIGH>;
 				vmmc-supply = <&pm8058_l14>;
 				vqmmc-supply = <&dragon_vio_txb>;
+				/* This hog will take the UBM2 out of power down */
+				ubm2-gpios = <&tlmm 93 GPIO_ACTIVE_HIGH>;
 			};
 		};
 	};
