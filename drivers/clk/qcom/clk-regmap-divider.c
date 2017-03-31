@@ -35,6 +35,9 @@ static long div_round_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_regmap_div *divider = to_clk_regmap_div(hw);
 
+	if (*prate == 0)
+		return 0;
+
 	return divider_round_rate(hw, rate, prate, NULL, divider->width,
 				  CLK_DIVIDER_ROUND_CLOSEST);
 }
@@ -46,8 +49,11 @@ static int div_set_rate(struct clk_hw *hw, unsigned long rate,
 	struct clk_regmap *clkr = &divider->clkr;
 	u32 div;
 
-	div = divider_get_val(rate, parent_rate, NULL, divider->width,
-			      CLK_DIVIDER_ROUND_CLOSEST);
+	if (parent_rate == 0)
+		div = 1;
+	else
+		div = divider_get_val(rate, parent_rate, NULL, divider->width,
+				      CLK_DIVIDER_ROUND_CLOSEST);
 
 	return regmap_update_bits(clkr->regmap, divider->reg,
 				  (BIT(divider->width) - 1) << divider->shift,

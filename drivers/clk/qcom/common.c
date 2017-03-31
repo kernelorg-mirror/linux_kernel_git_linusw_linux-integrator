@@ -32,7 +32,7 @@ struct freq_tbl *qcom_find_freq(const struct freq_tbl *f, unsigned long rate)
 	if (!f->freq)
 		return f;
 
-	for (; f->freq; f++)
+	for (; f->pre_div; f++)
 		if (rate <= f->freq)
 			return f;
 
@@ -46,7 +46,7 @@ const struct freq_tbl *qcom_find_freq_floor(const struct freq_tbl *f,
 {
 	const struct freq_tbl *best = NULL;
 
-	for ( ; f->freq; f++) {
+	for ( ; f->pre_div; f++) {
 		if (rate >= f->freq)
 			best = f;
 		else
