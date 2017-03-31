@@ -100,6 +100,7 @@ static const char * const lcc_parent_tbl[] = {
  * LPA_PLL0 we need to provide a second table.
  */
 static struct freq_tbl clk_tbl_aif_osr_pll4[] = {
+	{        0, P_GND,           1,  0, 0   },
 	{   768000, P_PLL4_LPA_PLL0, 4,  1, 176 },
 	{  1024000, P_PLL4_LPA_PLL0, 4,  1, 132 },
 	{  1536000, P_PLL4_LPA_PLL0, 4,  1,  88 },
