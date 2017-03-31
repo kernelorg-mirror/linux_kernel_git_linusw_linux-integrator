@@ -2714,6 +2714,11 @@ static int gcc_msm8660_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	/* Used by LCC to ground clock lines */
+	ret = qcom_cc_register_board_clk(dev, "gnd_board", "gnd", 0);
+	if (ret)
+		return ret;
+
 	return qcom_cc_probe(pdev, &gcc_msm8660_desc);
 }
 
