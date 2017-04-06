@@ -220,9 +220,8 @@ static struct clk_regmap_mux prefix##_bit_clk = {		\
 			.name = #prefix "_bit_clk",		\
 			.parent_names = (const char *[]){	\
 				#prefix "_bit_div_clk",		\
-				#prefix "_codec_clk",		\
 			},					\
-			.num_parents = 2,			\
+			.num_parents = 1,			\
 			.ops = &clk_regmap_mux_closest_ops,	\
 			.flags = CLK_SET_RATE_PARENT,		\
 		},						\
