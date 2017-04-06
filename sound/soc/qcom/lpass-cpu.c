@@ -43,21 +43,34 @@ static int lpass_cpu_daiops_set_sysclk(struct snd_soc_dai *dai, int clk_id,
 	return ret;
 }
 
+static int lpass_cpu_daiops_set_dai_fmt(struct snd_soc_dai *dai,
+					unsigned int fmt)
+{
+	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+
+	/* Store this in driver data and apply when setting hw_params */
+	drvdata->fmt = fmt;
+	return 0;
+}
+
 static int lpass_cpu_daiops_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_variant *variant = drvdata->variant;
 	int ret;
 
 	ret = clk_prepare_enable(drvdata->mi2s_osr_clk[dai->driver->id]);
 	if (ret) {
-		dev_err(dai->dev, "error in enabling mi2s osr clk: %d\n", ret);
+		dev_err(dai->dev, "error in enabling %s: %d\n",
+			variant->dai_osr_clk_names[dai->driver->id], ret);
 		return ret;
 	}
 
 	ret = clk_prepare_enable(drvdata->mi2s_bit_clk[dai->driver->id]);
 	if (ret) {
-		dev_err(dai->dev, "error in enabling mi2s bit clk: %d\n", ret);
+		dev_err(dai->dev, "error in enabling %s: %d\n",
+			variant->dai_bit_clk_names[dai->driver->id], ret);
 		clk_disable_unprepare(drvdata->mi2s_osr_clk[dai->driver->id]);
 		return ret;
 	}
@@ -79,10 +92,13 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	struct lpass_data *drvdata = snd_soc_dai_get_drvdata(dai);
+	struct lpass_variant *variant = drvdata->variant;
 	snd_pcm_format_t format = params_format(params);
+	unsigned int master = drvdata->fmt & SND_SOC_DAIFMT_MASTER_MASK;
 	unsigned int channels = params_channels(params);
 	unsigned int rate = params_rate(params);
 	unsigned int mode;
+	unsigned long freq;
 	unsigned int regval;
 	int bitwidth, ret;
 
@@ -91,9 +107,9 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 		dev_err(dai->dev, "invalid bit width given: %d\n", bitwidth);
 		return bitwidth;
 	}
+	freq = rate * bitwidth * 2;
 
-	regval = LPAIF_I2SCTL_LOOPBACK_DISABLE |
-			LPAIF_I2SCTL_WSSRC_INTERNAL;
+	regval = LPAIF_I2SCTL_LOOPBACK_DISABLE;
 
 	switch (bitwidth) {
 	case 16:
@@ -190,6 +206,37 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 			regval |= LPAIF_I2SCTL_MICMONO_MONO;
 	}
 
+	switch (master) {
+	case SND_SOC_DAIFMT_CBS_CFS:
+		/* Disable both SCK and WS */
+		dev_dbg(dai->dev,
+			"slave mode CBS_CFS set %s to 0 Hz to disable SCK\n",
+			variant->dai_bit_clk_names[dai->driver->id]);
+		freq = 0;
+		regval |= LPAIF_I2SCTL_WSSRC_EXTERNAL;
+		break;
+	case SND_SOC_DAIFMT_CBS_CFM:
+		/* Enable SCLK, disable WS */
+		dev_dbg(dai->dev, "master mode CBS_CFM\n");
+		regval |= LPAIF_I2SCTL_WSSRC_EXTERNAL;
+		break;
+	case SND_SOC_DAIFMT_CBM_CFM:
+		/* Enable SCK and WS */
+		dev_dbg(dai->dev, "master mode CBS_CFM\n");
+		regval |= LPAIF_I2SCTL_WSSRC_INTERNAL;
+		break;
+	case SND_SOC_DAIFMT_CBM_CFS:
+		/* Disable SCK, enable WS */
+		dev_dbg(dai->dev,
+			"slave mode CBM_CFS set %s to 0 Hz to disable SCK\n",
+			variant->dai_bit_clk_names[dai->driver->id]);
+		freq = 0;
+		regval |= LPAIF_I2SCTL_WSSRC_INTERNAL;
+	default:
+		/* Assume internal, clocked as default */
+		regval |= LPAIF_I2SCTL_WSSRC_INTERNAL;
+	}
+
 	ret = regmap_write(drvdata->lpaif_map,
 			   LPAIF_I2SCTL_REG(drvdata->variant, dai->driver->id),
 			   regval);
@@ -199,10 +246,11 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	ret = clk_set_rate(drvdata->mi2s_bit_clk[dai->driver->id],
-			   rate * bitwidth * 2);
+			   freq);
 	if (ret) {
-		dev_err(dai->dev, "error setting mi2s bitclk to %u: %d\n",
-			rate * bitwidth * 2, ret);
+		dev_err(dai->dev, "error setting %s to %lu Hz: %d\n",
+			variant->dai_bit_clk_names[dai->driver->id],
+			freq, ret);
 		return ret;
 	}
 
@@ -301,6 +349,7 @@ static int lpass_cpu_daiops_trigger(struct snd_pcm_substream *substream,
 
 const struct snd_soc_dai_ops asoc_qcom_lpass_cpu_dai_ops = {
 	.set_sysclk	= lpass_cpu_daiops_set_sysclk,
+	.set_fmt	= lpass_cpu_daiops_set_dai_fmt,
 	.startup	= lpass_cpu_daiops_startup,
 	.shutdown	= lpass_cpu_daiops_shutdown,
 	.hw_params	= lpass_cpu_daiops_hw_params,
