@@ -253,6 +253,8 @@ static int lpass_cpu_daiops_hw_params(struct snd_pcm_substream *substream,
 			freq, ret);
 		return ret;
 	}
+	dev_info(dai->dev, "setting %s to %lu Hz I2S regval %08x\n",
+		 variant->dai_bit_clk_names[dai->driver->id], freq, regval);
 
 	return 0;
 }

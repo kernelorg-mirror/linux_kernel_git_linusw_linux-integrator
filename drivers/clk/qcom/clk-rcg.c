@@ -46,12 +46,15 @@ static u8 clk_rcg_get_parent(struct clk_hw *hw)
 		goto err;
 	ns = ns_to_src(&rcg->s, ns);
 	for (i = 0; i < num_parents; i++)
-		if (ns == rcg->s.parent_map[i].cfg)
+		if (ns == rcg->s.parent_map[i].cfg) {
+			pr_info("%s: Clock %s has parent %d\n",
+				__func__, clk_hw_get_name(hw), i);
 			return i;
+		}
 
 err:
-	pr_debug("%s: Clock %s has invalid parent, using default.\n",
-		 __func__, clk_hw_get_name(hw));
+	pr_info("%s: Clock %s has invalid parent %d, using default.\n",
+		__func__, clk_hw_get_name(hw), ns);
 	return 0;
 }
 
@@ -82,12 +85,15 @@ static u8 clk_dyn_rcg_get_parent(struct clk_hw *hw)
 	ns = ns_to_src(s, ns);
 
 	for (i = 0; i < num_parents; i++)
-		if (ns == s->parent_map[i].cfg)
+		if (ns == s->parent_map[i].cfg) {
+			pr_info("%s: Clock %s has parent %d\n",
+				__func__, clk_hw_get_name(hw), i);
 			return i;
+		}
 
 err:
-	pr_debug("%s: Clock %s has invalid parent, using default.\n",
-		 __func__, clk_hw_get_name(hw));
+	pr_info("%s: Clock %s has invalid parent %d, using default.\n",
+		__func__, clk_hw_get_name(hw), ns);
 	return 0;
 }
 

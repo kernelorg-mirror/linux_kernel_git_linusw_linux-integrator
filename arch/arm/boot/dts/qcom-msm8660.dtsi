@@ -4,6 +4,8 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/qcom,gcc-msm8660.h>
+#include <dt-bindings/clock/qcom,lcc-msm8660.h>
+#include <dt-bindings/sound/msm8x60-lpass.h>
 #include <dt-bindings/soc/qcom,gsbi.h>
 
 / {
@@ -576,6 +578,51 @@
 			compatible = "qcom,tcsr-msm8660", "syscon";
 			reg = <0x1a400000 0x100>;
 		};
-	};
 
+		/* Clock controller for the low-power audio subsystem */
+		lcc: clock-controller@28000000 {
+			compatible = "qcom,lcc-msm8660";
+			reg = <0x28000000 0x1000>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
+		/*
+		 * Low-power audio subsystem, this contains a bunch of things
+		 * including I2S channels and a QDSP6 V3 for autonomous
+		 * playback of audio when the rest of the system is sleeping.
+		 */
+		lpass@28100000 {
+			compatible = "qcom,lpass-cpu-msm8660";
+			status = "disabled";
+			#sound-dai-cells = <1>;
+			reg = <0x28100000 0x10000>;
+			reg-names = "lpass-lpaif";
+			interrupts = <GIC_SPI 85 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "lpass-irq-lpaif";
+
+			clocks = <&lcc MI2S_OSR_CLK>,
+				 <&lcc MI2S_BIT_CLK>,
+				 <&lcc CODEC_I2S_MIC_OSR_CLK>,
+				 <&lcc CODEC_I2S_MIC_BIT_CLK>,
+				 <&lcc SPARE_I2S_MIC_OSR_CLK>,
+				 <&lcc SPARE_I2S_MIC_BIT_CLK>,
+				 <&lcc CODEC_I2S_SPKR_OSR_CLK>,
+				 <&lcc CODEC_I2S_SPKR_BIT_CLK>,
+				 <&lcc SPARE_I2S_SPKR_OSR_CLK>,
+				 <&lcc SPARE_I2S_SPKR_BIT_CLK>,
+				 <&lcc PCM_CLK>;
+			clock-names = "mi2s-osr-clk",
+				      "mi2s-bit-clk",
+				      "codec-i2s-mic-osr-clk",
+				      "codec-i2s-mic-bit-clk",
+				      "spare-i2s-mic-osr-clk",
+				      "spare-i2s-mic-bit-clk",
+				      "codec-i2s-spkr-osr-clk",
+				      "codec-i2s-spkr-bit-clk",
+				      "spare-i2s-spkr-osr-clk",
+				      "spare-i2s-spkr-bit-clk",
+				      "pcm-clk";
+		};
+	};
 };

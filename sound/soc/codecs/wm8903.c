@@ -1231,14 +1231,18 @@ static int wm8903_set_dai_fmt(struct snd_soc_dai *codec_dai,
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBS_CFS:
+		dev_info(codec->dev, "slave mode CBS_CFS\n");
 		break;
 	case SND_SOC_DAIFMT_CBS_CFM:
+		dev_info(codec->dev, "master mode LRC CLK CBS_CFM\n");
 		aif1 |= WM8903_LRCLK_DIR;
 		break;
 	case SND_SOC_DAIFMT_CBM_CFM:
+		dev_info(codec->dev, "master mode LRC CLK + BCLK CBS_CFM\n");
 		aif1 |= WM8903_LRCLK_DIR | WM8903_BCLK_DIR;
 		break;
 	case SND_SOC_DAIFMT_CBM_CFS:
+		dev_info(codec->dev, "master mode BCLK CBM_CFS\n");
 		aif1 |= WM8903_BCLK_DIR;
 		break;
 	default:

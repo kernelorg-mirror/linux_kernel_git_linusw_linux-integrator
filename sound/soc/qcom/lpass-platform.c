@@ -211,6 +211,12 @@ static int lpass_platform_pcmops_hw_params(struct snd_soc_component *component,
 			ret);
 		return ret;
 	}
+	dev_info(soc_runtime->dev,
+		 "Write into DMACTL channel %d @%08x value %08x\n",
+		 ch,
+		 LPAIF_DMACTL_REG(v, ch, dir),
+		 regval);
+
 
 	return 0;
 }
@@ -231,6 +237,12 @@ static int lpass_platform_pcmops_hw_free(struct snd_soc_component *component,
 	if (ret)
 		dev_err(soc_runtime->dev, "error writing to rdmactl reg: %d\n",
 			ret);
+	dev_info(soc_runtime->dev,
+		 "Write into DMACTL channel %d @%08x value %08x\n",
+		 pcm_data->dma_ch,
+		 LPAIF_DMACTL_REG(v, pcm_data->dma_ch, substream->stream),
+		 0);
+
 
 	return ret;
 }
@@ -256,6 +268,12 @@ static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 			ret);
 		return ret;
 	}
+	dev_info(soc_runtime->dev,
+		 "Write into DMABASE channel %d @%08x value %08x\n",
+		 ch,
+		 LPAIF_DMABASE_REG(v, ch, dir),
+		 runtime->dma_addr);
+
 
 	ret = regmap_write(drvdata->lpaif_map,
 			LPAIF_DMABUFF_REG(v, ch, dir),
@@ -265,6 +283,11 @@ static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 			ret);
 		return ret;
 	}
+	dev_info(soc_runtime->dev,
+		 "Write into DMABUFF channel %d @%08x value %08x\n",
+		 ch,
+		 LPAIF_DMABUFF_REG(v, ch, dir),
+		 (snd_pcm_lib_buffer_bytes(substream) >> 2) - 1);
 
 	ret = regmap_write(drvdata->lpaif_map,
 			LPAIF_DMAPER_REG(v, ch, dir),
@@ -274,6 +297,11 @@ static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 			ret);
 		return ret;
 	}
+	dev_info(soc_runtime->dev,
+		 "Write into DMAPER channel %d @%08x value %08x\n",
+		 ch,
+		 LPAIF_DMAPER_REG(v, ch, dir),
+		 (snd_pcm_lib_period_bytes(substream) >> 2) - 1);
 
 	ret = regmap_update_bits(drvdata->lpaif_map,
 			LPAIF_DMACTL_REG(v, ch, dir),
@@ -283,6 +311,10 @@ static int lpass_platform_pcmops_prepare(struct snd_soc_component *component,
 			ret);
 		return ret;
 	}
+	dev_info(soc_runtime->dev,
+		 "Enable DMA channel %d @%08x\n",
+		 ch,
+		 LPAIF_DMACTL_REG(v, ch, dir));
 
 	return 0;
 }
@@ -313,6 +345,11 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to irqclear reg: %d\n", ret);
 			return ret;
 		}
+		dev_info(soc_runtime->dev,
+			 "Clear IRQ channel %d @%08x val %08x\n",
+			 ch,
+			 LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
+			 LPAIF_IRQ_ALL(ch));
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
 				LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
@@ -323,6 +360,11 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to irqen reg: %d\n", ret);
 			return ret;
 		}
+		dev_info(soc_runtime->dev,
+			 "Enable IRQ channel %d @%08x bits %08x\n",
+			 ch,
+			 LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
+			 LPAIF_IRQ_ALL(ch));
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
 				LPAIF_DMACTL_REG(v, ch, dir),
@@ -333,6 +375,11 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to rdmactl reg: %d\n", ret);
 			return ret;
 		}
+		dev_info(soc_runtime->dev,
+			 "Enable DMA channel %d @%08x bits %08x\n",
+			 ch,
+			 LPAIF_DMACTL_REG(v, ch, dir),
+			 LPAIF_DMACTL_ENABLE_ON);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
@@ -346,6 +393,12 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to rdmactl reg: %d\n", ret);
 			return ret;
 		}
+		dev_info(soc_runtime->dev,
+			 "Disable DMA channel %d @%08x bits %08x\n",
+			 ch,
+			 LPAIF_DMACTL_REG(v, ch, dir),
+			 LPAIF_DMACTL_ENABLE_OFF);
+
 
 		ret = regmap_update_bits(drvdata->lpaif_map,
 				LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
@@ -355,6 +408,12 @@ static int lpass_platform_pcmops_trigger(struct snd_soc_component *component,
 				"error writing to irqen reg: %d\n", ret);
 			return ret;
 		}
+		dev_info(soc_runtime->dev,
+			 "Disable IRQ DMA channel %d @%08x bits %08x\n",
+			 ch,
+			 LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST),
+			 0);
+
 		break;
 	}
 
@@ -415,6 +474,8 @@ static irqreturn_t lpass_dma_interrupt_handler(
 	irqreturn_t ret = IRQ_NONE;
 	int rv;
 
+	dev_info(soc_runtime->dev, "%s\n", __func__);
+
 	if (interrupts & LPAIF_IRQ_PER(chan)) {
 		rv = regmap_write(drvdata->lpaif_map,
 				LPAIF_IRQCLEAR_REG(v, LPAIF_IRQ_PORT_HOST),
@@ -465,6 +526,8 @@ static irqreturn_t lpass_platform_lpaif_irq(int irq, void *data)
 	struct lpass_variant *v = drvdata->variant;
 	unsigned int irqs;
 	int rv, chan;
+
+	pr_info("%s\n", __func__);
 
 	rv = regmap_read(drvdata->lpaif_map,
 			LPAIF_IRQSTAT_REG(v, LPAIF_IRQ_PORT_HOST), &irqs);
@@ -571,6 +634,9 @@ int asoc_qcom_lpass_platform_register(struct platform_device *pdev)
 		dev_err(&pdev->dev, "error writing to irqen reg: %d\n", ret);
 		return ret;
 	}
+	dev_info(&pdev->dev,
+		 "Disable all IRQ @%08x bits %08x\n",
+		 LPAIF_IRQEN_REG(v, LPAIF_IRQ_PORT_HOST), 0);
 
 	ret = devm_request_irq(&pdev->dev, drvdata->lpaif_irq,
 			lpass_platform_lpaif_irq, IRQF_TRIGGER_RISING,

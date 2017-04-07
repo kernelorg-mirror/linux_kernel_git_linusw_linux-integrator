@@ -24,6 +24,12 @@ config SND_SOC_LPASS_APQ8016
 	select SND_SOC_LPASS_CPU
 	select SND_SOC_LPASS_PLATFORM
 
+config SND_SOC_LPASS_MSM8X60
+	tristate
+	depends on HAS_DMA
+	select SND_SOC_LPASS_CPU
+	select SND_SOC_LPASS_PLATFORM
+
 config SND_SOC_STORM
 	tristate "ASoC I2S support for Storm boards"
 	depends on SND_SOC_QCOM
@@ -110,3 +116,12 @@ config SND_SOC_SDM845
 	  To add support for audio on Qualcomm Technologies Inc.
 	  SDM845 SoC-based systems.
 	  Say Y if you want to use audio device on this SoCs.
+
+config SND_SOC_MSM8660_WM8903
+	tristate "SoC Audio support for MSM8660 platforms with WM8903 codec"
+	depends on SND_SOC_QCOM && HAS_DMA
+	select SND_SOC_LPASS_MSM8X60
+	help
+          Support for Qualcomm Technologies LPASS audio block in
+          MSM8660 SOC-based systems with the Wolfson Micro WM8903 codec.
+          Say Y if you want to use audio with the WM8903 on this platform.

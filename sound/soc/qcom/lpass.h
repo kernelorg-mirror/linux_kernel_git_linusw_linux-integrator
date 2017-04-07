@@ -51,6 +51,9 @@ struct lpass_data {
 	/* used it for handling interrupt per dma channel */
 	struct snd_pcm_substream *substream[LPASS_MAX_DMA_CHANNELS];
 
+	/* Cached master/slave config from set_dai_fmt() */
+	unsigned int fmt;
+
 	/* 8016 specific */
 	struct clk *pcnoc_mport_clk;
 	struct clk *pcnoc_sway_clk;

@@ -102,6 +102,84 @@
 		pinctrl-0 = <&dragon_cm3605_gpios>, <&dragon_cm3605_mpps>;
 	};
 
+	/*
+	 * The audio routing is board specific so we need to probe and manage
+	 * a specific sound card just for the APQ8060 with WM8903 board.
+	 * On my board, testpoint TP73 (WS) is connected to the WM8903 DACDAT
+	 * signal with a green soldered-on wire and R30 (MCLK) on the main
+	 * board.
+	 */
+	sound: sound {
+		compatible = "qcom,msm8660-wm8903-sndcard";
+		qcom,model = "Dragonboard APQ8060";
+
+		/*
+		 * IN3L and IN3R are used as mono input for headset/headphone
+		 * mic and handset mic respectively. Both use the MICBIAS
+		 * output to biasing the microphone.
+		 */
+		qcom,audio-routing =
+			"Headphone", "LINEOUTL",
+			"Headphone", "LINEOUTR",
+			"Headset Mic", "MICBIAS",
+			"Handset", "HPOUTL",
+			"Handset", "HPOUTR",
+			"Handset Mic", "MICBIAS",
+			"IN3L", "Headset Mic",
+			"IN3R", "Handset Mic";
+
+		/*
+		 * External speaker power amplifier GPIOs called
+		 * D0 (left) and D1 (right). Each PA is a
+		 * ON semiconductor NLMD5820.
+		 */
+		qcom,spkr-pa-left-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
+		qcom,spkr-pa-right-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
+
+		/*
+		 * On the schematic, GPIO 108 is confusingly named
+		 * "WLAN_RST_N" but apparently not routed for that function,
+		 * but used to enable a clock gate to the MCLK.
+		 */
+		qcom,mclk-gate-gpios = <&tlmm 108 GPIO_ACTIVE_HIGH>;
+
+		/*
+		 * The I2S MIC OSR CLK drives MCLK to the WM8903 codec
+		 * and the I2S SPKR bit clock drives the actual I2S to the
+		 * codec.
+		 */
+		clocks = <&lcc CODEC_I2S_MIC_OSR_CLK>,
+			 <&lcc CODEC_I2S_MIC_BIT_CLK>,
+			 <&lcc CODEC_I2S_SPKR_OSR_CLK>,
+			 <&lcc CODEC_I2S_SPKR_BIT_CLK>;
+		clock-names = "codec-i2s-mic-osr-clk",
+			      "codec-i2s-mic-bit-clk",
+			      "codec-i2s-spkr-osr-clk",
+			      "codec-i2s-spkr-bit-clk";
+
+		external-codec-playback-dai-link@0 {
+			link-name = "WM8903 codec playback";
+			cpu {
+				sound-dai = <&lpass CODEC_I2S_SPKR>;
+			};
+			codec {
+				sound-dai = <&wm8903>;
+			};
+		};
+
+		external-codec-record-dai-link@1 {
+			link-name = "WM8903 codec record";
+			cpu {
+				sound-dai = <&lpass CODEC_I2S_MIC>;
+			};
+			codec {
+				sound-dai = <&wm8903>;
+			};
+		};
+
+		/* FIXME: add FM radio on MI2S and Bluetooth on PCM */
+	};
+
 	soc {
 		pinctrl@800000 {
 			/* eMMMC pins, all 8 data lines connected */
@@ -258,6 +336,29 @@
 				irq {
 					pins = "gpio57"; /* IRQ line */
 					bias-pull-up;
+				};
+			};
+
+			/*
+			 * Muxings for the Low-power Audio Subsystem
+			 * The default I2S output/input lines (dedicated pins)
+			 * are routed to the Wolfson codec.
+			 */
+			dragon_lpass_pins: lpass {
+				/* MI2S on these lines is routed to the WCN2243 FM radio I2S input */
+				mux0 {
+					pins = "gpio101", /* FM_I2S_WS (bit clock) */
+					       "gpio102", /* FM_I2S_SCK (word select) */
+					       "gpio107"; /* FM_I2S_SD (SD3, data) */
+					function = "mi2s";
+				};
+				/* The mono PCM channel on these lines is routed to the WCN2243 Bluetooth */
+				mux1 {
+					pins = "gpio111", /* BT_PCM_DOUT */
+					       "gpio112", /* BT_PCM_DIN */
+					       "gpio113", /* BT_PCM_SYNC */
+					       "gpio114"; /* BT_PCM_CLK */
+					function = "pcm";
 				};
 			};
 		};
@@ -479,6 +580,7 @@
 				wm8903: wm8903@1a {
 					/* This Woolfson Micro device has an unrouted interrupt line */
 					compatible = "wlf,wm8903";
+					#sound-dai-cells = <0>;
 					reg = <0x1a>;
 
 					AVDD-supply = <&pm8058_l16>;
@@ -955,6 +1057,14 @@
 				vmmc-supply = <&pm8058_l14>;
 				vqmmc-supply = <&dragon_vio_txb>;
 			};
+		};
+
+		/* Low-power Audio Subsystem (LPASS) I2S and PCM output */
+		lpass: lpass@28100000 {
+			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&dragon_lpass_pins>;
+			qcom,slave-channels = <CODEC_I2S_SPKR>;
 		};
 	};
 };
