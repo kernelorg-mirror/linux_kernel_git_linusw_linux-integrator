@@ -2284,7 +2284,7 @@ static void pl08x_ensure_on(struct pl08x_driver_data *pl08x)
 static irqreturn_t pl08x_irq(int irq, void *dev)
 {
 	struct pl08x_driver_data *pl08x = dev;
-	u32 mask = 0, err, tc, i;
+	u32 mask = 0, err, tc, i, val;
 
 	/* check & clear - ERR & TC interrupts */
 	err = readl(pl08x->base + PL080_ERR_STATUS);
@@ -2296,6 +2296,11 @@ static irqreturn_t pl08x_irq(int irq, void *dev)
 	tc = readl(pl08x->base + PL080_TC_STATUS);
 	if (tc)
 		writel(tc, pl08x->base + PL080_TC_CLEAR);
+	val = readl(pl08x->base + PL080_TC_STATUS);
+	if (val) {
+		dev_err(&pl08x->adev->dev, "%s TC didn\'t clear 0x%08x\n",
+			__func__, val);
+	}
 
 	if (!err && !tc)
 		return IRQ_NONE;
