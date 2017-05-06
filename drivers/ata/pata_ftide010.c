@@ -266,6 +266,46 @@ static struct ata_port_info ftide010_port_info = {
 
 #if IS_ENABLED(CONFIG_SATA_GEMINI)
 
+static int pata_ftide010_gemini_phy_hardreset(struct ata_link *link,
+					      unsigned int *class,
+					      unsigned long deadline)
+{
+	struct ata_port *ap = link->ap;
+	struct ftide010 *ftide = ap->host->private_data;
+	struct device *dev = ftide->dev;
+	struct sata_gemini *sg = ftide->sg;
+	int ret;
+
+	if (ftide->master_to_sata0) {
+		dev_info(dev, "SATA0 (master) hardreset\n");
+		ret = gemini_sata_reset_bridge(sg, 0);
+		if (ret)
+			return ret;
+	}
+	if (ftide->master_to_sata1) {
+		dev_info(dev, "SATA1 (master) hardreset\n");
+		ret = gemini_sata_reset_bridge(sg, 1);
+		if (ret)
+			return ret;
+	}
+	/* Avoid double-resetting */
+	if (ftide->slave_to_sata0 && !ftide->master_to_sata0) {
+		dev_info(dev, "SATA0 (slave) hardreset\n");
+		ret = gemini_sata_reset_bridge(sg, 0);
+		if (ret)
+			return ret;
+	}
+	/* Avoid double-resetting */
+	if (ftide->slave_to_sata1 && !ftide->master_to_sata1) {
+		dev_info(dev, "SATA1 (slave) hardreset\n");
+		ret = gemini_sata_reset_bridge(sg, 1);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int pata_ftide010_gemini_port_start(struct ata_port *ap)
 {
 	struct ftide010 *ftide = ap->host->private_data;
@@ -371,8 +411,15 @@ static int pata_ftide010_gemini_init(struct ftide010 *ftide,
 		pata_ftide010_gemini_cable_detect;
 
 	/* Flag port as SATA-capable */
-	if (gemini_sata_bridge_enabled(sg, is_ata1))
+	if (gemini_sata_bridge_enabled(sg, is_ata1)) {
 		pi->flags |= ATA_FLAG_SATA;
+		/*
+		 * Register hard reset operation in the ATA port the core will
+		 * call this right after probe
+		 */
+		pata_ftide010_port_ops.hardreset =
+			pata_ftide010_gemini_phy_hardreset;
+	}
 
 	/* This device has broken DMA, only PIO works */
 	if (of_machine_is_compatible("itian,sq201")) {
