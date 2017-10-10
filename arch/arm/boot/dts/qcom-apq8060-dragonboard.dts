@@ -12,6 +12,7 @@
 
 	aliases {
 		serial0 = &gsbi12_serial;
+		serial1 = &gsbi6_serial;
 	};
 
 	chosen {
@@ -240,6 +241,34 @@
 					bias-pull-up;
 				};
 			};
+
+			/* UART connected to the WCN2243 Bluetooth portions */
+			dragon_gsbi6_uart_pins: uartdm_gsbi6 {
+				/* TX, RX, CTS, RFR */
+				mux {
+					pins = "gpio53", "gpio54", "gpio55", "gpio56";
+					function = "gsbi6";
+				};
+				pinconf {
+					pins = "gpio53", "gpio54", "gpio55", "gpio56";
+					drive-strength = <8>;
+					bias-disable;
+				};
+			};
+
+			/* I2C connected to the WCN2243 FM radio portions */
+			dragon_gsbi7_i2c_pins: gsbi7_i2c {
+				mux {
+					pins = "gpio59", "gpio60";
+					function = "gsbi7";
+				};
+				pinconf {
+					pins = "gpio59", "gpio60";
+					drive-strength = <12>;
+					/* These have external pull-up 2.2kOhm to 1.8V */
+					bias-disable;
+				};
+			};
 		};
 
 		qcom,ssbi@500000 {
@@ -295,6 +324,15 @@
 					dragon_mpu3050_gpios: mpu3050-state {
 						pinconf {
 							pins = "gpio17";
+							function = "normal";
+							input-enable;
+							bias-disable;
+							power-source = <PM8058_GPIO_S3>;
+						};
+					};
+					dragon_wcn2243_gpios: wcn2243-state {
+						pinconf {
+							pins = "gpio21";
 							function = "normal";
 							input-enable;
 							bias-disable;
@@ -440,6 +478,62 @@
 					color = <LED_COLOR_ID_GREEN>;
 					default-state = "on";
 					linux,default-trigger = "heartbeat";
+				};
+			};
+		};
+
+		gsbi@16500000 {
+			status = "ok";
+			qcom,mode = <GSBI_PROT_UART_W_FC>;
+
+			/* Serial port connected to the WCN2243 Bluetooth chip */
+			serial@16540000 {
+				status = "ok";
+				pinctrl-names = "default";
+				pinctrl-0 = <&dragon_gsbi6_uart_pins>, <&dragon_wcn2243_gpios>;
+
+				wcn2243_bt: bluetooth {
+					compatible = "qcom,wcn2243-bluetooth";
+					max-speed = <115200>;
+					vdd-io-supply = <&pm8058_s3>; // pin 31, rail VDD_IO, to rail VDD_1P8, 1.8V
+					vdd-xo-bias-supply = <&pm8058_s2>; // pin 24, rail VDD_XO_BIAS, to rail LDO_1P3_OUT, 1.3V
+					// vreg-dig-supply = ; pin 14, to GND
+					vreg-ana-supply = <&pm8058_s2>; // pin 4, rail LDO_1P3_OUT, 1.3V
+					vdd-ldo-in-supply = <&pm8058_s3>; // pin 10, rail VDD_IO, to rail VDD_1P8, 1.8V
+					vdd-dig-1p3-supply = <&pm8058_s2>; // pin 21, rail LDO_1P3_OUT, 1.3V
+					vdd-bt-1p3-supply = <&pm8058_s2>; // pins 5, 12, 13, 15, rail LDO_1P3_OUT, 1.3V
+					vdd-bt-pa-supply = <&pm8058_l8>; // pin 19, rail VDD_BT_PA, to rail VDD_2P9, 2.9V Power Amp
+					reset-gpios = <&pm8058_gpio 21 GPIO_ACTIVE_LOW>; // GPIO21 on PM8058
+				};
+			};
+		};
+
+		gsbi@16600000 {
+			status = "ok";
+			qcom,mode = <GSBI_PROT_I2C>;
+
+			/* I2C connected to WCN2243 "Marimba" chip which has FM radio ("Tamaru") and EFuses */
+			i2c@16680000 {
+				status = "ok";
+				pinctrl-names = "default";
+				pinctrl-0 = <&dragon_gsbi7_i2c_pins>;
+
+				wcn2243: mfd {
+					reg = <0x05>;
+					compatible = "qcom,wcn2243", "qcom,marimba";
+					// List all general pins from BT a second time?
+					vdd-io-supply = <&pm8058_s3>; // pin 31, rail VDD_IO, to rail VDD_1P8, 1.8V
+					vdd-xo-bias-supply = <&pm8058_s2>; // pin 24, rail VDD_XO_BIAS, to rail LDO_1P3_OUT, 1.3V
+					// vreg-dig-supply = ; pin 14, to GND
+					vreg-ana-supply = <&pm8058_s2>; // pin 4, rail LDO_1P3_OUT, 1.3V
+					vdd-ldo-in-supply = <&pm8058_s3>; // pin 10, rail VDD_IO, to rail VDD_1P8, 1.8V
+					vdd-dig-1p3-supply = <&pm8058_s2>; // pin 21, rail LDO_1P3_OUT, 1.3V
+				};
+				wcn2243_fmradio: fmradio {
+					reg = <0x07>;
+					compatible = "qcom,wcn2243-fmradio", "qcom,bahama";
+					vdd-fm-1p3-supply = <&pm8058_s2>; // pins 37, 50, 54, 55 to rail LDP_1P3_OUT, 1.3V
+					vdd-fm-dac-supply = <&pm8058_s3>; // pin 32, rail VDD_IO to rail VDD_1P8, 1.8V
 				};
 			};
 		};
