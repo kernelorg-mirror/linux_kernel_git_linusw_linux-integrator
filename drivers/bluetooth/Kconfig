@@ -135,6 +135,17 @@ config BT_HCIUART_NOKIA
 
 	  Say Y here to compile support for Nokia's H4+ protocol.
 
+config BT_HCIUART_WCN2243
+	tristate "UART Qualcomm WCN2243 protocol support"
+	depends on BT_HCIUART
+	depends on BT_HCIUART_SERDEV
+	select BT_HCIUART_H4
+	help
+	  Some glue to support the Qualcomm WCN2243 Bluetooth chip
+	  connected with a direct serial device (UART).
+
+	  Say Y here to compile support for Qualcomm's WCN2243
+
 config BT_HCIUART_BCSP
 	bool "BCSP protocol support"
 	depends on BT_HCIUART

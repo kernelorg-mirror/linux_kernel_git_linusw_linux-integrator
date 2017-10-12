@@ -504,6 +504,7 @@
 					vdd-bt-1p3-supply = <&pm8058_s2>; // pins 5, 12, 13, 15, rail LDO_1P3_OUT, 1.3V
 					vdd-bt-pa-supply = <&pm8058_l8>; // pin 19, rail VDD_BT_PA, to rail VDD_2P9, 2.9V Power Amp
 					reset-gpios = <&pm8058_gpio 21 GPIO_ACTIVE_LOW>; // GPIO21 on PM8058
+					status = "disabled";
 				};
 			};
 		};
@@ -517,10 +518,23 @@
 				status = "ok";
 				pinctrl-names = "default";
 				pinctrl-0 = <&dragon_gsbi7_i2c_pins>;
+				#address-cells = <1>;
+				#size-cells = <0>;
 
 				wcn2243: mfd {
 					reg = <0x05>;
 					compatible = "qcom,wcn2243", "qcom,marimba";
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					/*
+					 * This clock "SYS_CLK" is the main clock for the device, enabling
+					 * register access etc.
+					 */
+					clocks = <&rpmcc RPM_XO_D0>;
+					clock-names = "SYS_CLK";
+
+					reset-gpios = <&pm8058_gpio 21 GPIO_ACTIVE_LOW>; // GPIO21 on PM8058
 					// List all general pins from BT a second time?
 					vdd-io-supply = <&pm8058_s3>; // pin 31, rail VDD_IO, to rail VDD_1P8, 1.8V
 					vdd-xo-bias-supply = <&pm8058_s2>; // pin 24, rail VDD_XO_BIAS, to rail LDO_1P3_OUT, 1.3V
@@ -528,12 +542,18 @@
 					vreg-ana-supply = <&pm8058_s2>; // pin 4, rail LDO_1P3_OUT, 1.3V
 					vdd-ldo-in-supply = <&pm8058_s3>; // pin 10, rail VDD_IO, to rail VDD_1P8, 1.8V
 					vdd-dig-1p3-supply = <&pm8058_s2>; // pin 21, rail LDO_1P3_OUT, 1.3V
-				};
-				wcn2243_fmradio: fmradio {
-					reg = <0x07>;
-					compatible = "qcom,wcn2243-fmradio", "qcom,bahama";
-					vdd-fm-1p3-supply = <&pm8058_s2>; // pins 37, 50, 54, 55 to rail LDP_1P3_OUT, 1.3V
-					vdd-fm-dac-supply = <&pm8058_s3>; // pin 32, rail VDD_IO to rail VDD_1P8, 1.8V
+
+					/* These are I2C children actually, dunno how to handle this */
+					wcn2243_fmradio: fmradio {
+						reg = <0x07>;
+						compatible = "qcom,wcn2243-fmradio", "qcom,bahama";
+						vdd-fm-1p3-supply = <&pm8058_s2>; // pins 37, 50, 54, 55 to rail LDP_1P3_OUT, 1.3V
+						vdd-fm-dac-supply = <&pm8058_s3>; // pin 32, rail VDD_IO to rail VDD_1P8, 1.8V
+					};
+					wcn2243_qmembist: nvram {
+						reg = <0x08>;
+						compatible = "qcom,wcn2243-qmembist";
+					};
 				};
 			};
 		};
