@@ -6,11 +6,45 @@ This document describes a few common design patterns found in device drivers.
 It is likely that subsystem maintainers will ask driver developers to
 conform to these design patterns.
 
-1. State Container
-2. container_of()
+1. API Design
+2. State Container
+3. container_of()
 
 
-1. State Container
+1. API Design
+~~~~~~~~~~~~~
+
+In 2008, long-term kernel contributor Rusty Russell came up with a few simple
+looking rules regarding API design. The rules are subjective to a varying
+degree and some may not be attainable under all circumstances. Reaching
+level 5 in C API's should in practice always be possible. The more general
+and widespread the use of the API is, the more important it is for it to
+conform to the highest possible level of API quality.
+
+10. It's impossible to get wrong.
+9.  The compiler/linker won't let you get it wrong.
+8.  The compiler will warn if you get it wrong.
+7.  The obvious use is (probably) the correct one.
+6.  The name tells you how to use it.
+5.  Do it right or it will always break at runtime.
+4.  Follow common convention and you'll get it right.
+3.  Read the documentation and you'll get it right.
+2.  Read the implementation and you'll get it right.
+1.  Read the correct mailing list thread and you'll get it right.
+
+-1. Read the mailing list thread and you'll get it wrong.
+-2. Read the implementation and you'll get it wrong.
+-3. Read the documentation and you'll get it wrong.
+-4. Follow common convention and you'll get it wrong.
+-5. Do it right and it will sometimes break at runtime.
+-6. The name tells you how not to use it.
+-7. The obvious use is wrong.
+-8. The compiler will warn if you get it right.
+-9. The compiler/linker won't let you get it right.
+-10. It's impossible to get right.
+
+
+2. State Container
 ~~~~~~~~~~~~~~~~~~
 
 While the kernel contains a few device drivers that assume that they will
@@ -63,7 +97,7 @@ This way you always get a pointer back to the correct instance of foo in
 your interrupt handler.
 
 
-2. container_of()
+3. container_of()
 ~~~~~~~~~~~~~~~~~
 
 Continuing on the above example we add an offloaded work::
