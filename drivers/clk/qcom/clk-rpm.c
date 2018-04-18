@@ -15,13 +15,15 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/bitops.h>
 
 #include <dt-bindings/mfd/qcom-rpm.h>
 #include <dt-bindings/clock/qcom,rpmcc.h>
 
 #define QCOM_RPM_MISC_CLK_TYPE				0x306b6c63
 #define QCOM_RPM_SCALING_ENABLE_ID			0x2
-#define QCOM_RPM_XO_MODE_ON				0x2
+#define QCOM_RPM_XO_MODE_PIN_CTRL			0x1 /* Enables the XO output pin */
+#define QCOM_RPM_XO_MODE_ON				0x2 /* Turns on the XO clock */
 
 static const struct clk_parent_data gcc_pxo[] = {
 	{ .fw_name = "pxo", .name = "pxo_board" },
@@ -57,12 +59,13 @@ static const struct clk_parent_data gcc_cxo[] = {
 		},							      \
 	}
 
-#define DEFINE_CLK_RPM_XO_BUFFER(_platform, _name, _active, offset)	      \
+#define DEFINE_CLK_RPM_XO_BUFFER(_platform, _name, _active, offset, core)     \
 	static struct clk_rpm _platform##_##_name = {			      \
 		.rpm_clk_id = QCOM_RPM_CXO_BUFFERS,			      \
 		.xo_offset = (offset),					      \
+		.xo_core_bit = (core),					      \
 		.hw.init = &(struct clk_init_data){			      \
-			.ops = &clk_rpm_xo_ops,			      \
+			.ops = &clk_rpm_xo_ops,				      \
 			.name = #_name,					      \
 			.parent_data = gcc_cxo,				      \
 			.num_parents = ARRAY_SIZE(gcc_cxo),		      \
@@ -88,6 +91,7 @@ struct rpm_cc;
 struct clk_rpm {
 	const int rpm_clk_id;
 	const int xo_offset;
+	const int xo_core_bit;
 	const bool active_only;
 	unsigned long rate;
 	bool enabled;
@@ -261,7 +265,13 @@ static int clk_rpm_xo_prepare(struct clk_hw *hw)
 
 	mutex_lock(&rcc->xo_lock);
 
-	value = rcc->xo_buffer_value | (QCOM_RPM_XO_MODE_ON << r->xo_offset);
+	value = rcc->xo_buffer_value;
+	value |= (QCOM_RPM_XO_MODE_ON << r->xo_offset);
+	/* Currently no drivers using XO want anything but the pin on */
+	value |= (QCOM_RPM_XO_MODE_PIN_CTRL << r->xo_offset);
+
+	if (value)
+		value |= r->xo_core_bit;
 	ret = qcom_rpm_write(r->rpm, QCOM_RPM_ACTIVE_STATE, clk_id, &value, 1);
 	if (!ret) {
 		r->enabled = true;
@@ -282,7 +292,15 @@ static void clk_rpm_xo_unprepare(struct clk_hw *hw)
 
 	mutex_lock(&rcc->xo_lock);
 
-	value = rcc->xo_buffer_value & ~(QCOM_RPM_XO_MODE_ON << r->xo_offset);
+	value = rcc->xo_buffer_value;
+	value &= ~(QCOM_RPM_XO_MODE_ON << r->xo_offset);
+	value &= ~(QCOM_RPM_XO_MODE_PIN_CTRL << r->xo_offset);
+	/*
+	 * If we are the last user of the core XO clock, turn off
+	 * the light and go home.
+	 */
+	if (!(value & ~r->xo_core_bit))
+		value = 0;
 	ret = qcom_rpm_write(r->rpm, QCOM_RPM_ACTIVE_STATE, clk_id, &value, 1);
 	if (!ret) {
 		r->enabled = false;
@@ -413,6 +431,11 @@ DEFINE_CLK_RPM(msm8660, mmfpb_clk, mmfpb_a_clk, QCOM_RPM_MMFPB_CLK);
 DEFINE_CLK_RPM(msm8660, smi_clk, smi_a_clk, QCOM_RPM_SMI_CLK);
 DEFINE_CLK_RPM(msm8660, ebi1_clk, ebi1_a_clk, QCOM_RPM_EBI1_CLK);
 DEFINE_CLK_RPM_FIXED(msm8660, pll4_clk, pll4_a_clk, QCOM_RPM_PLL_4, 540672000);
+DEFINE_CLK_RPM_XO_BUFFER(msm8660, xo_d0_clk, xo_d0_a_clk, 0, BIT(18));
+DEFINE_CLK_RPM_XO_BUFFER(msm8660, xo_d1_clk, xo_d1_a_clk, 8, BIT(18));
+DEFINE_CLK_RPM_XO_BUFFER(msm8660, xo_a0_clk, xo_a0_a_clk, 16, BIT(18));
+DEFINE_CLK_RPM_XO_BUFFER(msm8660, xo_a1_clk, xo_a1_a_clk, 24, BIT(18));
+DEFINE_CLK_RPM_XO_BUFFER(msm8660, xo_a2_clk, xo_a2_a_clk, 28, BIT(18));
 
 static struct clk_rpm *msm8660_clks[] = {
 	[RPM_APPS_FABRIC_CLK] = &msm8660_afab_clk,
@@ -434,6 +457,11 @@ static struct clk_rpm *msm8660_clks[] = {
 	[RPM_EBI1_CLK] = &msm8660_ebi1_clk,
 	[RPM_EBI1_A_CLK] = &msm8660_ebi1_a_clk,
 	[RPM_PLL4_CLK] = &msm8660_pll4_clk,
+	[RPM_XO_D0] = &msm8660_xo_d0_clk,
+	[RPM_XO_D1] = &msm8660_xo_d1_clk,
+	[RPM_XO_A0] = &msm8660_xo_a0_clk,
+	[RPM_XO_A1] = &msm8660_xo_a1_clk,
+	[RPM_XO_A2] = &msm8660_xo_a2_clk,
 };
 
 static const struct rpm_clk_desc rpm_clk_msm8660 = {
@@ -451,11 +479,11 @@ DEFINE_CLK_RPM(apq8064, mmfpb_clk, mmfpb_a_clk, QCOM_RPM_MMFPB_CLK);
 DEFINE_CLK_RPM(apq8064, sfab_clk, sfab_a_clk, QCOM_RPM_SYS_FABRIC_CLK);
 DEFINE_CLK_RPM(apq8064, sfpb_clk, sfpb_a_clk, QCOM_RPM_SFPB_CLK);
 DEFINE_CLK_RPM(apq8064, qdss_clk, qdss_a_clk, QCOM_RPM_QDSS_CLK);
-DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_d0_clk, xo_d0_a_clk, 0);
-DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_d1_clk, xo_d1_a_clk, 8);
-DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a0_clk, xo_a0_a_clk, 16);
-DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a1_clk, xo_a1_a_clk, 24);
-DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a2_clk, xo_a2_a_clk, 28);
+DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_d0_clk, xo_d0_a_clk, 0, 0);
+DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_d1_clk, xo_d1_a_clk, 8, 0);
+DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a0_clk, xo_a0_a_clk, 16, 0);
+DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a1_clk, xo_a1_a_clk, 24, 0);
+DEFINE_CLK_RPM_XO_BUFFER(apq8064, xo_a2_clk, xo_a2_a_clk, 28, 0);
 
 static struct clk_rpm *apq8064_clks[] = {
 	[RPM_APPS_FABRIC_CLK] = &apq8064_afab_clk,
