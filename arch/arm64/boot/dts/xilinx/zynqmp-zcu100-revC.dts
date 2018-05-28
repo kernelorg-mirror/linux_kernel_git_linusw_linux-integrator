@@ -33,7 +33,7 @@
 	};
 
 	chosen {
-		bootargs = "earlycon";
+		bootargs = "earlycon root=/dev/sda1 rw rootwait";
 		stdout-path = "serial0:115200n8";
 	};
 
@@ -225,7 +225,7 @@
 &sdhci0 {
 	status = "okay";
 	no-1-8-v;
-	broken-cd; /* CD has to be enabled by default */
+	cd-gpios = <&gpio 24 GPIO_ACTIVE_LOW>;
 	disable-wp;
 };
 
@@ -273,11 +273,13 @@
 /* ULPI SMSC USB3320 */
 &usb0 {
 	status = "okay";
+	maximum-speed = "high-speed";
 };
 
 /* ULPI SMSC USB3320 */
 &usb1 {
 	status = "okay";
+	maximum-speed = "high-speed";
 };
 
 &watchdog0 {
