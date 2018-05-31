@@ -30,5 +30,7 @@ obj-$(CONFIG_TI_SYSC)		+= ti-sysc.o
 obj-$(CONFIG_TS_NBUS)		+= ts-nbus.o
 obj-$(CONFIG_UNIPHIER_SYSTEM_BUS)	+= uniphier-system-bus.o
 obj-$(CONFIG_VEXPRESS_CONFIG)	+= vexpress-config.o
-
 obj-$(CONFIG_DA8XX_MSTPRI)	+= da8xx-mstpri.o
+
+# Non-discoverable daughterboards
+obj-$(CONFIG_DAUGHTERBOARDS)	+= daughterboards/

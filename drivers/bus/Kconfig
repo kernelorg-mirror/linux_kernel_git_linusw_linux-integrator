@@ -183,4 +183,6 @@ config DA8XX_MSTPRI
 
 source "drivers/bus/fsl-mc/Kconfig"
 
+source "drivers/bus/daughterboards/Kconfig"
+
 endmenu

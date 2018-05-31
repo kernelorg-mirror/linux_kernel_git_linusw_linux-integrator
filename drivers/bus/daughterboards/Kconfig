@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Non-discoverable daughterboards
+
+menuconfig DAUGHTERBOARDS
+	bool "Non-discoverable daughterboards"
+	help
+	  These bus drivers deal with non-discoverable daughterboards,
+	  which means daughterboards (plug-in complex logic circuit
+	  boards) that can not reliably be discovered by software.
+	  The physical connector is defined for the host hardware,
+	  but we need to indicate what is on it at runtime using
+	  sysfs.
+
+if DAUGHTERBOARDS
+
+menuconfig 96BOARDS_MEZZANINES
+	bool "96boards mezzanine boards"
+
+if 96BOARDS_MEZZANINES
+
+config 96BOARDS_LS_CONNECTOR
+	bool "96boards low speed connector driver"
+	depends on OF
+	depends on I2C
+	depends on SPI_MASTER
+	depends on GPIOLIB
+	help
+	 Driver for the 96boards low speed connector
+
+config 96BOARDS_SECURE96
+	bool "96boards Secure96 board driver"
+	depends on 96BOARDS_LS_CONNECTOR
+	select NEW_LEDS
+	select LEDS_CLASS
+	select LEDS_GPIO
+	select EEPROM_AT24
+	select CRYPTO_HW
+	select CRYPTO_DEV_ATMEL_ECC
+	select HW_RANDOM
+	select TCG_TPM
+	select HW_RANDOM_TPM
+	select TCG_TIS
+	select TCG_TIS_SPI
+	help
+	 Driver for the 96boards Secure96 mezzanine
+
+endif # 96BOARDS_MEZZANINES
+
+endif # DAUGHTERBOARDS
