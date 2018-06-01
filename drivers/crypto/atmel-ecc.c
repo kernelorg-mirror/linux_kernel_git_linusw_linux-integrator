@@ -127,16 +127,13 @@ static void atmel_ecc_checksum(struct atmel_ecc_cmd *cmd)
 	*crc16 = atmel_ecc_crc16(0, data, len);
 }
 
-static void atmel_ecc_init_read_cmd(struct atmel_ecc_cmd *cmd)
+static void atmel_ecc_init_read_config_word(struct atmel_ecc_cmd *cmd,
+					    u16 config_word)
 {
 	cmd->word_addr = COMMAND;
 	cmd->opcode = OPCODE_READ;
-	/*
-	 * Read the word from Configuration zone that contains the lock bytes
-	 * (UserExtra, Selector, LockValue, LockConfig).
-	 */
 	cmd->param1 = CONFIG_ZONE;
-	cmd->param2 = CONFIG_ZONE_FOOTER;
+	cmd->param2 = config_word;
 	cmd->count = READ_COUNT;
 
 	atmel_ecc_checksum(cmd);
@@ -626,7 +623,7 @@ static int device_sanity_check(struct i2c_client *client)
 	if (!cmd)
 		return -ENOMEM;
 
-	atmel_ecc_init_read_cmd(cmd);
+	atmel_ecc_init_read_config_word(cmd, CONFIG_ZONE_FOOTER);
 
 	ret = atmel_ecc_send_receive(client, cmd);
 	if (ret) {
