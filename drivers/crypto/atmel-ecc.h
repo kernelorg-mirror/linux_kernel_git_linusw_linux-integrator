@@ -85,8 +85,6 @@ static const struct {
 #define CONFIG_ZONE_SERIAL_8_I2CEN	0x03
 #define CONFIG_ZONE_I2C_OTP		0x04
 #define CONFIG_ZONE_FOOTER		0x15
-#define LOCK_VALUE_IDX			(RSP_DATA_IDX + 2)
-#define LOCK_CONFIG_IDX			(RSP_DATA_IDX + 3)
 
 /*
  * Wake High delay to data communication (microseconds). SDA should be stable

@@ -690,8 +690,12 @@ static int device_sanity_check(struct i2c_client *client)
 	 * Failure to lock these zones may permit modification of any secret
 	 * keys and may lead to other security problems.
 	 */
-	if (cmd->data[LOCK_CONFIG_IDX] || cmd->data[LOCK_VALUE_IDX]) {
-		dev_err(&client->dev, "Configuration or Data and OTP zones are unlocked!\n");
+	if (cmd->data[RSP_DATA_IDX+3] == 0x55) {
+		dev_err(&client->dev, "configuration zone is unlocked\n");
+		ret = -ENOTSUPP;
+	}
+	if (cmd->data[RSP_DATA_IDX+2] == 0x55) {
+		dev_err(&client->dev, "data and OTP zones are unlocked\n");
 		ret = -ENOTSUPP;
 	}
 
