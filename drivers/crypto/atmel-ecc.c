@@ -659,12 +659,9 @@ static int atmel_ecc_probe(struct i2c_client *client,
 
 	ret = of_property_read_u32(client->adapter->dev.of_node,
 				   "clock-frequency", &bus_clk_rate);
-	if (ret) {
-		dev_err(dev, "of: failed to read clock-frequency property\n");
-		return ret;
-	}
-
-	if (bus_clk_rate > 1000000L) {
+	if (ret)
+		dev_warn(dev, "i2c host missing clock frequency information\n");
+	else if (bus_clk_rate > 1000000L) {
 		dev_err(dev, "%d exceeds maximum supported clock frequency (1MHz)\n",
 			bus_clk_rate);
 		return -EINVAL;
