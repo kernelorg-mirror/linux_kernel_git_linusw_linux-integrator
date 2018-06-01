@@ -17,6 +17,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
+#include <linux/random.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
@@ -610,6 +611,61 @@ static inline size_t atmel_ecc_wake_token_sz(u32 bus_clk_rate)
 	return DIV_ROUND_UP(no_of_bits, 8);
 }
 
+static int atmel_ecc_get_serial(struct i2c_client *client)
+{
+	struct atmel_ecc_cmd *cmd;
+	int ret;
+	int i;
+	u8 serial[9];
+
+	cmd = kmalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	atmel_ecc_init_read_config_word(cmd, CONFIG_ZONE_SERIAL_0_3);
+	ret = atmel_ecc_send_receive(client, cmd);
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to read serial byte 0-3\n");
+		goto out_free_cmd;
+	}
+	for (i = 0; i < 4; i++)
+		serial[i] = cmd->data[RSP_DATA_IDX + i];
+
+	atmel_ecc_init_read_config_word(cmd, CONFIG_ZONE_SERIAL_4_7);
+	ret = atmel_ecc_send_receive(client, cmd);
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to read serial byte 4-7\n");
+		goto out_free_cmd;
+	}
+	for (i = 0; i < 4; i++)
+		serial[4 + i] = cmd->data[RSP_DATA_IDX + i];
+
+
+	atmel_ecc_init_read_config_word(cmd, CONFIG_ZONE_SERIAL_8_I2CEN);
+	ret = atmel_ecc_send_receive(client, cmd);
+	if (ret) {
+		kfree(cmd);
+		dev_err(&client->dev,
+			"failed to read serial byte 8\n");
+		goto out_free_cmd;
+	}
+	serial[8] = cmd->data[RSP_DATA_IDX];
+
+	/* This is device-unique data so it goes into the entropy pool */
+	add_device_randomness(serial, sizeof(serial));
+
+	dev_info(&client->dev,
+		 "serial number: %02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+		 serial[0], serial[1], serial[2], serial[3], serial[4],
+		 serial[5], serial[6], serial[7], serial[8]);
+
+out_free_cmd:
+	kfree(cmd);
+	return ret;
+}
+
 static int device_sanity_check(struct i2c_client *client)
 {
 	struct atmel_ecc_cmd *cmd;
@@ -689,6 +745,10 @@ static int atmel_ecc_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, i2c_priv);
 
 	ret = device_sanity_check(client);
+	if (ret)
+		return ret;
+
+	ret = atmel_ecc_get_serial(client);
 	if (ret)
 		return ret;
 
