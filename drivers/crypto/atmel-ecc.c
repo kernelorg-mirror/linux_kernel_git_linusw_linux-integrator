@@ -136,7 +136,7 @@ static void atmel_ecc_init_read_cmd(struct atmel_ecc_cmd *cmd)
 	 * (UserExtra, Selector, LockValue, LockConfig).
 	 */
 	cmd->param1 = CONFIG_ZONE;
-	cmd->param2 = DEVICE_LOCK_ADDR;
+	cmd->param2 = CONFIG_ZONE_FOOTER;
 	cmd->count = READ_COUNT;
 
 	atmel_ecc_checksum(cmd);

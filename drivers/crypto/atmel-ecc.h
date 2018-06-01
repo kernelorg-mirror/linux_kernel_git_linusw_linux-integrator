@@ -77,8 +77,13 @@ static const struct {
 #define RSP_DATA_IDX			1 /* buffer index of data in response */
 #define DATA_SLOT_2			2 /* used for ECDH private key */
 
-/* Definitions for the device lock state */
-#define DEVICE_LOCK_ADDR		0x15
+/* Definitions for the configuration zone words, these are 4 bytes each */
+#define CONFIG_ZONE_SERIAL_0_3		0x00
+#define CONFIG_ZONE_REVISION		0x01
+#define CONFIG_ZONE_SERIAL_4_7		0x02
+#define CONFIG_ZONE_SERIAL_8_I2CEN	0x03
+#define CONFIG_ZONE_I2C_OTP		0x04
+#define CONFIG_ZONE_FOOTER		0x15
 #define LOCK_VALUE_IDX			(RSP_DATA_IDX + 2)
 #define LOCK_CONFIG_IDX			(RSP_DATA_IDX + 3)
 
