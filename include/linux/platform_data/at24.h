@@ -11,6 +11,7 @@
 #include <linux/types.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/bitops.h>
+#include <linux/gpio/consumer.h>
 
 /**
  * struct at24_platform_data - data to set up at24 (generic eeprom) driver
@@ -55,6 +56,7 @@ struct at24_platform_data {
 
 	void		(*setup)(struct nvmem_device *nvmem, void *context);
 	void		*context;
+	struct gpio_desc *wp_gpiod;
 };
 
 #endif /* _LINUX_AT24_H */
