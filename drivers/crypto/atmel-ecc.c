@@ -306,26 +306,31 @@ static int atmel_ecc_send_receive(struct i2c_client *client,
 	mutex_lock(&i2c_priv->lock);
 
 	ret = atmel_ecc_wakeup(client);
-	if (ret)
+	if (ret) {
+		dev_err(&client->dev, "wakeup failed\n");
 		goto err;
+	}
 
-	/* send the command */
 	ret = i2c_master_send(client, (u8 *)cmd, cmd->count + WORD_ADDR_SIZE);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(&client->dev, "command send failed\n");
 		goto err;
+	}
 
 	/* delay the appropriate amount of time for command to execute */
 	msleep(cmd->msecs);
 
-	/* receive the response */
 	ret = i2c_master_recv(client, cmd->data, cmd->rxsize);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(&client->dev, "getting response failed\n");
 		goto err;
+	}
 
-	/* put the device into low-power mode */
 	ret = atmel_ecc_sleep(client);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(&client->dev, "putting to sleep failed\n");
 		goto err;
+	}
 
 	mutex_unlock(&i2c_priv->lock);
 	return atmel_ecc_status(&client->dev, cmd->data);
@@ -624,8 +629,11 @@ static int device_sanity_check(struct i2c_client *client)
 	atmel_ecc_init_read_cmd(cmd);
 
 	ret = atmel_ecc_send_receive(client, cmd);
-	if (ret)
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to send ECC init command\n");
 		goto free_cmd;
+	}
 
 	/*
 	 * It is vital that the Configuration, Data and OTP zones be locked
