@@ -666,7 +666,9 @@ out_free_cmd:
 	return ret;
 }
 
-static int device_sanity_check(struct i2c_client *client)
+static int atmel_ecc_get_lock_status(struct i2c_client *client,
+				     bool *config_is_locked,
+				     bool *otp_data_is_locked)
 {
 	struct atmel_ecc_cmd *cmd;
 	int ret;
@@ -680,9 +682,32 @@ static int device_sanity_check(struct i2c_client *client)
 	ret = atmel_ecc_send_receive(client, cmd);
 	if (ret) {
 		dev_err(&client->dev,
-			"failed to send ECC init command\n");
+			"failed to send config read command\n");
 		goto free_cmd;
 	}
+
+	/* According to datasheet anything else than 0x55 means "locked" */
+	if (cmd->data[RSP_DATA_IDX+3] == 0x55)
+		*config_is_locked = false;
+	else
+		*config_is_locked = true;
+
+	if (cmd->data[RSP_DATA_IDX+2] == 0x55)
+		*otp_data_is_locked = false;
+	else
+		*otp_data_is_locked = true;
+
+free_cmd:
+	kfree(cmd);
+	return ret;
+}
+
+static int device_sanity_check(struct i2c_client *client)
+{
+	struct atmel_ecc_cmd *cmd;
+	bool config_locked;
+	bool otp_data_locked;
+	int ret;
 
 	/*
 	 * It is vital that the Configuration, Data and OTP zones be locked
@@ -690,11 +715,16 @@ static int device_sanity_check(struct i2c_client *client)
 	 * Failure to lock these zones may permit modification of any secret
 	 * keys and may lead to other security problems.
 	 */
-	if (cmd->data[RSP_DATA_IDX+3] == 0x55) {
+	ret = atmel_ecc_get_lock_status(client, &config_locked,
+					&otp_data_locked);
+	if (ret)
+		return ret;
+
+	if (!config_locked) {
 		dev_err(&client->dev, "configuration zone is unlocked\n");
 		ret = -ENOTSUPP;
 	}
-	if (cmd->data[RSP_DATA_IDX+2] == 0x55) {
+	if (!otp_data_locked) {
 		dev_err(&client->dev, "data and OTP zones are unlocked\n");
 		ret = -ENOTSUPP;
 	}
