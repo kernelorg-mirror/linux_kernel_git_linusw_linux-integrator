@@ -28,6 +28,7 @@
 #define GENKEY_RSP_SIZE			(ATMEL_ECC_PUBKEY_SIZE + \
 					 CMD_OVERHEAD_SIZE)
 #define READ_RSP_SIZE			(4 + CMD_OVERHEAD_SIZE)
+#define LOCK_RSP_SIZE			(1 + CMD_OVERHEAD_SIZE)
 #define MAX_RSP_SIZE			GENKEY_RSP_SIZE
 #define MAX_CMD_SIZE			(9 + MAX_RSP_SIZE)
 
@@ -73,6 +74,8 @@ static const struct {
 
 /* Definitions for eeprom organization */
 #define CONFIG_ZONE			0
+#define OTP_ZONE			1
+#define DATA_ZONE			2
 
 /* Definitions for Indexes common to all commands */
 #define RSP_DATA_IDX			1 /* buffer index of data in response */
@@ -85,6 +88,7 @@ static const struct {
 #define CONFIG_ZONE_SERIAL_8_I2CEN	0x03
 #define CONFIG_ZONE_I2C_OTP		0x04
 #define CONFIG_ZONE_FOOTER		0x15
+#define CONFIG_ZONE_WORDS		0x16
 
 /*
  * Wake High delay to data communication (microseconds). SDA should be stable
@@ -100,14 +104,19 @@ static const struct {
 #define MAX_EXEC_TIME_ECDH		58
 #define MAX_EXEC_TIME_GENKEY		115
 #define MAX_EXEC_TIME_READ		1
+#define MAX_EXEC_TIME_LOCK		24
 
 /* Command opcode */
 #define OPCODE_ECDH			0x43
 #define OPCODE_GENKEY			0x40
 #define OPCODE_READ			0x02
+#define OPCODE_LOCK			0x17
 
 /* Definitions for the READ Command */
 #define READ_DATASZ			0
+
+/* Definitions for the LOCK Command */
+#define LOCK_DATASZ			0
 
 /* Definitions for the GenKey Command */
 #define GENKEY_DATASZ			0

@@ -26,6 +26,14 @@
 #include <crypto/kpp.h>
 #include "atmel-ecc.h"
 
+/*
+ * This scary kernel parameter can be used to get Linux to lock down the
+ * config, data and OTP of the device, if it was previously unlocked.
+ */
+static int lock_zones = 0;
+module_param(lock_zones, int, 0000);
+MODULE_PARM_DESC(lock_zones, "1 = lock config, data and OTP zones");
+
 /* Used for binding tfm objects to i2c clients. */
 struct atmel_ecc_driver_data {
 	struct list_head i2c_client_list;
@@ -115,6 +123,37 @@ static void atmel_ecc_init_read_config_word(struct atmel_ecc_cmd *cmd,
 	cmd->datasz = READ_DATASZ;
 	cmd->msecs = MAX_EXEC_TIME_READ;
 	cmd->rxsize = READ_RSP_SIZE;
+}
+
+/**
+ * atmel_ecc_init_lock_zone_cmd() - initialize a zone lock command
+ * @cmd: the command to initialize
+ * @zone: the zone we want to lock
+ * @crc16: the CRC of the data that we want to lock
+ */
+static int atmel_ecc_init_lock_zone_cmd(struct atmel_ecc_cmd *cmd,
+					u8 zone, u16 crc)
+{
+	cmd->word_addr = COMMAND;
+	cmd->opcode = OPCODE_LOCK;
+	switch (zone) {
+	case CONFIG_ZONE:
+		cmd->param1 = 0;
+		break;
+	case OTP_ZONE:
+	case DATA_ZONE:
+		/* This locks OTP and data at the same time */
+		cmd->param1 = 1;
+		break;
+	default:
+		return -EINVAL;
+	}
+	cmd->param2 = crc;
+	cmd->datasz = LOCK_DATASZ;
+	cmd->msecs = MAX_EXEC_TIME_LOCK;
+	cmd->rxsize = LOCK_RSP_SIZE;
+
+	return 0;
 }
 
 static void atmel_ecc_init_genkey_cmd(struct atmel_ecc_cmd *cmd, u16 keyid)
@@ -702,9 +741,76 @@ free_cmd:
 	return ret;
 }
 
-static int device_sanity_check(struct i2c_client *client)
+static int atmel_ecc_lock_zone(struct i2c_client *client,
+			       u16 zone)
 {
 	struct atmel_ecc_cmd *cmd;
+	u16 lockcrc;
+	int ret;
+	int i;
+
+	cmd = kmalloc(sizeof(*cmd), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	/*
+	 * If we are locking the config area, read out all the words
+	 * and checksum them.
+	 */
+	lockcrc = 0x0000;
+	if (zone == CONFIG_ZONE) {
+		for (i = 0; i < CONFIG_ZONE_WORDS; i++) {
+			atmel_ecc_init_read_config_word(cmd, i);
+			ret = atmel_ecc_send_receive(client, cmd);
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to read config word %02x\n", i);
+				goto free_cmd;
+			}
+			lockcrc = crc16(lockcrc, &cmd->data[RSP_DATA_IDX], 4);
+		}
+	} else {
+		/* Implement checksumming of OTP and data zone */
+		dev_err(&client->dev, "locking OTP and data not implemented\n");
+		goto free_cmd;
+	}
+
+	/* Bits are reversed on the device */
+	lockcrc = bitrev16(lockcrc);
+	dev_info(&client->dev,
+		 "CRC16 checksum zone: %04x\n", lockcrc);
+
+	ret = atmel_ecc_init_lock_zone_cmd(cmd, zone, lockcrc);
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to initialize lock command\n");
+		goto free_cmd;
+	}
+
+	ret = atmel_ecc_send_receive(client, cmd);
+	if (ret) {
+		dev_err(&client->dev,
+			"failed to send config lock command\n");
+		goto free_cmd;
+	}
+
+	/* Zero means success anything else failure */
+	if (cmd->data[RSP_DATA_IDX] == 0x00)
+		ret = 0;
+	else {
+		dev_err(&client->dev,
+			"config lock command failed\n");
+		ret = -EIO;
+	}
+
+free_cmd:
+	kfree(cmd);
+	return ret;
+}
+
+static int device_sanity_check(struct i2c_client *client)
+{
+	struct device *dev = &client->dev;
 	bool config_locked;
 	bool otp_data_locked;
 	int ret;
@@ -721,18 +827,37 @@ static int device_sanity_check(struct i2c_client *client)
 		return ret;
 
 	if (!config_locked) {
-		dev_err(&client->dev, "configuration zone is unlocked\n");
-		ret = -ENOTSUPP;
+		dev_err(dev, "configuration zone is unlocked\n");
+		if (lock_zones) {
+			dev_err(dev,
+				"attempting to lock configuration zone\n");
+			ret = atmel_ecc_lock_zone(client, CONFIG_ZONE);
+			if (ret)
+				return ret;
+			ret = atmel_ecc_get_lock_status(client, &config_locked,
+							&otp_data_locked);
+			if (ret)
+				return ret;
+			if (config_locked) {
+				dev_err(dev,
+					"configuration zone still locked\n");
+				return -EIO;
+			}
+		} else {
+			/* We do not support devices with unlocked config */
+			dev_err(dev,
+				"we do not support unlocked devices\n");
+			dev_err(dev,
+				"pass module param lock_zones=1 to let Linux lock them\n");
+			return -ENOTSUPP;
+		}
 	}
 	if (!otp_data_locked) {
-		dev_err(&client->dev, "data and OTP zones are unlocked\n");
-		ret = -ENOTSUPP;
+		dev_err(dev, "data and OTP zones are unlocked\n");
+		return -ENOTSUPP;
 	}
 
-	/* fall through */
-free_cmd:
-	kfree(cmd);
-	return ret;
+	return 0;
 }
 
 static int atmel_ecc_probe(struct i2c_client *client,
