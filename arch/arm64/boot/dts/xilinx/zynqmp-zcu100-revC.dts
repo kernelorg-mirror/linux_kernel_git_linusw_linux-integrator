@@ -33,7 +33,7 @@
 	};
 
 	chosen {
-		bootargs = "earlycon root=/dev/sda1 rw rootwait";
+		bootargs = "earlycon root=/dev/sda1 rw rootwait atmel-ecc.lock_zones=1";
 		stdout-path = "serial0:115200n8";
 	};
 
