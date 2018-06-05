@@ -29,29 +29,30 @@
 					 CMD_OVERHEAD_SIZE)
 #define READ_RSP_SIZE			(4 + CMD_OVERHEAD_SIZE)
 #define MAX_RSP_SIZE			GENKEY_RSP_SIZE
+#define MAX_CMD_SIZE			(9 + MAX_RSP_SIZE)
 
 /**
  * atmel_ecc_cmd - structure used for communicating with the device.
  * @word_addr: indicates the function of the packet sent to the device. This
  *             byte should have a value of COMMAND for normal operation.
- * @count    : number of bytes to be transferred to (or from) the device.
  * @opcode   : the command code.
  * @param1   : the first parameter; always present.
  * @param2   : the second parameter; always present.
+ * @datasz   : size of the data field
  * @data     : optional remaining input data. Includes a 2-byte CRC.
  * @rxsize   : size of the data received from i2c client.
  * @msecs    : command execution time in milliseconds
  */
 struct atmel_ecc_cmd {
 	u8 word_addr;
-	u8 count;
 	u8 opcode;
 	u8 param1;
 	u16 param2;
+	u8 datasz;
 	u8 data[MAX_RSP_SIZE];
 	u8 msecs;
 	u16 rxsize;
-} __packed;
+};
 
 /* Status/Error codes */
 #define STATUS_SIZE			0x04
@@ -108,14 +109,14 @@ static const struct {
 #define OPCODE_READ			0x02
 
 /* Definitions for the READ Command */
-#define READ_COUNT			7
+#define READ_DATASZ			0
 
 /* Definitions for the GenKey Command */
-#define GENKEY_COUNT			7
+#define GENKEY_DATASZ			0
 #define GENKEY_MODE_PRIVATE		0x04
 
 /* Definitions for the ECDH Command */
-#define ECDH_COUNT			71
+#define ECDH_DATASZ			64
 #define ECDH_PREFIX_MODE		0x00
 
 #endif /* __ATMEL_ECC_H__ */

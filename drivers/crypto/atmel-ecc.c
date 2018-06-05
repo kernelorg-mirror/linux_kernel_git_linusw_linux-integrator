@@ -104,29 +104,6 @@ struct atmel_ecc_work_data {
 	struct atmel_ecc_cmd cmd;
 };
 
-static u16 atmel_ecc_crc16(u16 crc, const u8 *buffer, size_t len)
-{
-	return cpu_to_le16(bitrev16(crc16(crc, buffer, len)));
-}
-
-/**
- * atmel_ecc_checksum() - Generate 16-bit CRC as required by ATMEL ECC.
- * CRC16 verification of the count, opcode, param1, param2 and data bytes.
- * The checksum is saved in little-endian format in the least significant
- * two bytes of the command. CRC polynomial is 0x8005 and the initial register
- * value should be zero.
- *
- * @cmd : structure used for communicating with the device.
- */
-static void atmel_ecc_checksum(struct atmel_ecc_cmd *cmd)
-{
-	u8 *data = &cmd->count;
-	size_t len = cmd->count - CRC_SIZE;
-	u16 *crc16 = (u16 *)(data + len);
-
-	*crc16 = atmel_ecc_crc16(0, data, len);
-}
-
 static void atmel_ecc_init_read_config_word(struct atmel_ecc_cmd *cmd,
 					    u16 config_word)
 {
@@ -134,10 +111,7 @@ static void atmel_ecc_init_read_config_word(struct atmel_ecc_cmd *cmd,
 	cmd->opcode = OPCODE_READ;
 	cmd->param1 = CONFIG_ZONE;
 	cmd->param2 = config_word;
-	cmd->count = READ_COUNT;
-
-	atmel_ecc_checksum(cmd);
-
+	cmd->datasz = READ_DATASZ;
 	cmd->msecs = MAX_EXEC_TIME_READ;
 	cmd->rxsize = READ_RSP_SIZE;
 }
@@ -145,14 +119,11 @@ static void atmel_ecc_init_read_config_word(struct atmel_ecc_cmd *cmd,
 static void atmel_ecc_init_genkey_cmd(struct atmel_ecc_cmd *cmd, u16 keyid)
 {
 	cmd->word_addr = COMMAND;
-	cmd->count = GENKEY_COUNT;
+	cmd->datasz = GENKEY_DATASZ;
 	cmd->opcode = OPCODE_GENKEY;
 	cmd->param1 = GENKEY_MODE_PRIVATE;
 	/* a random private key will be generated and stored in slot keyID */
-	cmd->param2 = cpu_to_le16(keyid);
-
-	atmel_ecc_checksum(cmd);
-
+	cmd->param2 = keyid;
 	cmd->msecs = MAX_EXEC_TIME_GENKEY;
 	cmd->rxsize = GENKEY_RSP_SIZE;
 }
@@ -163,11 +134,11 @@ static int atmel_ecc_init_ecdh_cmd(struct atmel_ecc_cmd *cmd,
 	size_t copied;
 
 	cmd->word_addr = COMMAND;
-	cmd->count = ECDH_COUNT;
+	cmd->datasz = ECDH_DATASZ;
 	cmd->opcode = OPCODE_ECDH;
 	cmd->param1 = ECDH_PREFIX_MODE;
 	/* private key slot */
-	cmd->param2 = cpu_to_le16(DATA_SLOT_2);
+	cmd->param2 = DATA_SLOT_2;
 
 	/*
 	 * The device only supports NIST P256 ECC keys. The public key size will
@@ -180,9 +151,6 @@ static int atmel_ecc_init_ecdh_cmd(struct atmel_ecc_cmd *cmd,
 				   cmd->data, ATMEL_ECC_PUBKEY_SIZE);
 	if (copied != ATMEL_ECC_PUBKEY_SIZE)
 		return -EINVAL;
-
-	atmel_ecc_checksum(cmd);
-
 	cmd->msecs = MAX_EXEC_TIME_ECDH;
 	cmd->rxsize = ECDH_RSP_SIZE;
 
@@ -298,7 +266,11 @@ static int atmel_ecc_send_receive(struct i2c_client *client,
 				  struct atmel_ecc_cmd *cmd)
 {
 	struct atmel_ecc_i2c_client_priv *i2c_priv = i2c_get_clientdata(client);
+	u8 buf[MAX_CMD_SIZE];
+	u16 cmdcrc;
+	u8 cmdlen;
 	int ret;
+	int i;
 
 	mutex_lock(&i2c_priv->lock);
 
@@ -308,7 +280,31 @@ static int atmel_ecc_send_receive(struct i2c_client *client,
 		goto err;
 	}
 
-	ret = i2c_master_send(client, (u8 *)cmd, cmd->count + WORD_ADDR_SIZE);
+	/* Marshal the command */
+	cmdlen = 6 + cmd->datasz + CRC_SIZE;
+	buf[0] = cmd->word_addr;
+	/* This excludes the word address, includes CRC */
+	buf[1] = cmdlen - 1;
+	buf[2] = cmd->opcode;
+	buf[3] = cmd->param1;
+	/* Enforce little-endian byte order */
+	buf[4] = cmd->param2 & 0xff;
+	buf[5] = (cmd->param2 >> 8);
+	/* Copy over the data array */
+	for (i = 0; i < cmd->datasz; i++)
+		buf[6+i] = cmd->data[i];
+	/*
+	 * CRC sum the command, do not include word addr or CRC. The
+	 * bit order in the CRC16 algorithm inside the chip is reversed,
+	 * so we need to swizzle the bits with bitrev16().
+	 */
+	cmdcrc = bitrev16(crc16(0x0000, buf+1, cmdlen - 1 - CRC_SIZE));
+	/* Enforce little-endian byte order */
+	buf[6+i] = (cmdcrc & 0xff);
+	buf[6+i+1] = (cmdcrc >> 8);
+
+	/* send the command */
+	ret = i2c_master_send(client, buf, cmdlen);
 	if (ret < 0) {
 		dev_err(&client->dev, "command send failed\n");
 		goto err;
