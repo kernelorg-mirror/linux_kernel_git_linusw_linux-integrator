@@ -3436,16 +3436,14 @@ struct spi_device *of_find_spi_device_by_node(struct device_node *node)
 	return dev ? to_spi_device(dev) : NULL;
 }
 EXPORT_SYMBOL_GPL(of_find_spi_device_by_node);
-#endif /* IS_ENABLED(CONFIG_OF) */
 
-#if IS_ENABLED(CONFIG_OF_DYNAMIC)
 static int __spi_of_controller_match(struct device *dev, const void *data)
 {
 	return dev->of_node == data;
 }
 
 /* the spi controllers are not using spi_bus, so we find it with another way */
-static struct spi_controller *of_find_spi_controller_by_node(struct device_node *node)
+struct spi_controller *of_find_spi_controller_by_node(struct device_node *node)
 {
 	struct device *dev;
 
@@ -3460,7 +3458,10 @@ static struct spi_controller *of_find_spi_controller_by_node(struct device_node 
 	/* reference got in class_find_device */
 	return container_of(dev, struct spi_controller, dev);
 }
+EXPORT_SYMBOL_GPL(of_find_spi_controller_by_node);
+#endif /* IS_ENABLED(CONFIG_OF) */
 
+#if IS_ENABLED(CONFIG_OF_DYNAMIC)
 static int of_spi_notify(struct notifier_block *nb, unsigned long action,
 			 void *arg)
 {
