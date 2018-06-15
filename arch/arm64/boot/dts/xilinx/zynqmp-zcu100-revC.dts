@@ -102,6 +102,28 @@
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio 7 GPIO_ACTIVE_LOW>; /* WIFI_EN */
 	};
+
+	lscon: connector {
+		compatible = "96boards,low-speed-connector";
+		i2c0 = <&i2csw_0>;
+		i2c1 = <&i2csw_1>;
+		spi = <&spi0>;
+		gpios = <&gpio 36 GPIO_ACTIVE_HIGH>, /* GPIO-A */
+		        <&gpio 37 GPIO_ACTIVE_HIGH>, /* GPIO-B */
+			<&gpio 39 GPIO_ACTIVE_HIGH>, /* GPIO-C */
+			<&gpio 40 GPIO_ACTIVE_HIGH>, /* GPIO-D */
+			<&gpio 44 GPIO_ACTIVE_HIGH>, /* GPIO-E */
+			<&gpio 45 GPIO_ACTIVE_HIGH>, /* GPIO-F */
+			<&gpio 78 GPIO_ACTIVE_HIGH>, /* GPIO-G */
+			<&gpio 79 GPIO_ACTIVE_HIGH>, /* GPIO-H */
+			<&gpio 80 GPIO_ACTIVE_HIGH>, /* GPIO-I */
+			<&gpio 81 GPIO_ACTIVE_HIGH>, /* GPIO-J */
+			<&gpio 82 GPIO_ACTIVE_HIGH>, /* GPIO-K */
+			<&gpio 83 GPIO_ACTIVE_HIGH>; /* GPIO-L */
+		//board {
+		//	compatible = "96boards,secure96";
+		//};
+	};
 };
 
 &dcc {
@@ -126,8 +148,9 @@
 			  "USB1_DIR", "USB1_DATA2", "USB1_NXT", "USB1_DATA0", "USB1_DATA1",
 			  "USB1_STP", "USB1_DATA3", "USB1_DATA4", "USB1_DATA5", "USB1_DATA6",
 			  "USB_DATA7", "WLAN_IRQ", "PMIC_IRQ", /* MIO end and EMIO start */
-			  "", "",
-			  "", "", "", "", "", "", "", "", "", "",
+			  "GPIO-G", "GPIO-H",
+			  "GPIO-I", "GPIO-J", "GPIO-K", "GPIO-L",
+			  "", "", "", "", "", "",
 			  "", "", "", "", "", "", "", "", "", "",
 			  "", "", "", "", "", "", "", "", "", "",
 			  "", "", "", "", "", "", "", "", "", "",
