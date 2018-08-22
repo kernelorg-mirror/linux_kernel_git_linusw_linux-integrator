@@ -1,0 +1,50 @@
+96Boards Low Speed Connectors
+
+The 96Boards connectors represent a non-dicoverable Low Speed (LS)
+and High Speed (HS) external bus on the 96Board development
+boards. Each 96Board presents both of these connectors.
+
+The Low Speed (LS) connector is a 40 pin 2x20 female pin header:
+- Power
+- Two buttons: power and reset
+- 2 x UART one optional with just RX/TX, one required with modem
+  CTS/RTS
+- 2 x I2C
+- 1 x SPI
+- 1 x I2S (audio)
+- 12 x GPIO lines named GPIO-A thru GPIO-L
+
+Further details on the electronics and signals are available in
+"96Boards Consumer Edition, Low Cost Hardware Platform Specification"
+As of writing version 1.0, January 2015.
+
+Required properties:
+
+- compatible: shall be "96boards,low-speed-connector"
+- i2c0: phandle to the I2C0 bus
+- i2c1: phandle to the I2C1 bus
+- spi: phandle to the SPI bus
+- gpios: a list of phandles to the GPIOs connected to the
+  connector. The handles need to be uniformly specified with the
+  0 flag as the connector is not the end consumer.
+
+Example:
+
+lscon: connector {
+	compatible = "96boards,low-speed-connector";
+	i2c0 = <&i2csw_0>;
+	i2c1 = <&i2csw_1>;
+	spi = <&spi0>;
+	gpios = <&gpio 36 0>, /* GPIO-A */
+	        <&gpio 37 0>, /* GPIO-B */
+		<&gpio 39 0>, /* GPIO-C */
+		<&gpio 40 0>, /* GPIO-D */
+		<&gpio 44 0>, /* GPIO-E */
+		<&gpio 45 0>, /* GPIO-F */
+		<&gpio 78 0>, /* GPIO-G */
+		<&gpio 79 0>, /* GPIO-H */
+		<&gpio 80 0>, /* GPIO-I */
+		<&gpio 81 0>, /* GPIO-J */
+		<&gpio 82 0>, /* GPIO-K */
+		<&gpio 83 0>; /* GPIO-L */
+};
