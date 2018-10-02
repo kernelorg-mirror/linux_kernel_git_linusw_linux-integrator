@@ -595,13 +595,16 @@ out:
 }
 
 /*
- * For blk-mq devices, we default to using mq-deadline, if available, for single
- * queue devices.  If deadline isn't available OR we have multiple queues,
- * default to "none".
+ * For blk-mq devices, we default to using:
+ * - "none" for multiqueue devices (nr_hw_queues != 1)
+ * - "bfq", if available, for single queue devices
+ * - "mq-deadline" if "bfq" is not available for single queue devices
+ * - "none" for single queue devices as well as last resort
  */
 int elevator_init_mq(struct request_queue *q)
 {
 	struct elevator_type *e;
+	const char *policy;
 	int err = 0;
 
 	if (q->nr_hw_queues != 1)
@@ -615,7 +618,18 @@ int elevator_init_mq(struct request_queue *q)
 	if (unlikely(q->elevator))
 		goto out_unlock;
 
-	e = elevator_get(q, "mq-deadline", false);
+	/*
+	 * Zoned devices must use a deadline scheduler because currently
+	 * that is the only scheduler respecting zoned writes.
+	 */
+	if (blk_queue_is_zoned(q))
+		policy = "mq-deadline";
+	else if (IS_ENABLED(CONFIG_IOSCHED_BFQ))
+		policy = "bfq";
+	else
+		policy = "mq-deadline";
+
+	e = elevator_get(q, policy, false);
 	if (!e)
 		goto out_unlock;
 
