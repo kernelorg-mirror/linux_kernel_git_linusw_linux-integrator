@@ -2,6 +2,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/kernel.h>
 #include <linux/smp.h>
+#include <linux/of.h>
 
 #include <asm/cp15.h>
 #include <asm/cputype.h>
@@ -67,6 +68,11 @@ static unsigned int spectre_v2_install_workaround(unsigned int method)
 {
 	const char *spectre_v2_method = NULL;
 	int cpu = smp_processor_id();
+
+	if (of_machine_is_compatible("arm,vexpress,v2p-ca9")) {
+		pr_err("CPU%u: Spectre v2: can't handle mitigations, CPU is vulnerable\n", cpu);
+		return;
+	}
 
 	if (per_cpu(harden_branch_predictor_fn, cpu))
 		return SPECTRE_MITIGATED;
