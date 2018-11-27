@@ -62,6 +62,7 @@ struct led_classdev {
 #define LED_BLINK_INVERT		3
 #define LED_BLINK_BRIGHTNESS_CHANGE 	4
 #define LED_BLINK_DISABLE		5
+#define LED_BLINK_HW_SET		6
 
 	/* Set LED brightness level
 	 * Must not sleep. Use brightness_set_blocking for drivers
@@ -89,6 +90,14 @@ struct led_classdev {
 	int		(*blink_set)(struct led_classdev *led_cdev,
 				     unsigned long *delay_on,
 				     unsigned long *delay_off);
+	/*
+	 * Set LED blinking immediately but may sleep (block) the caller
+	 * to access the LED device register.
+	 */
+	int		(*blink_set_blocking)(struct led_classdev *led_cdev,
+					      unsigned long *delay_on,
+					      unsigned long *delay_off);
+
 
 	int (*pattern_set)(struct led_classdev *led_cdev,
 			   struct led_pattern *pattern, u32 len, int repeat);

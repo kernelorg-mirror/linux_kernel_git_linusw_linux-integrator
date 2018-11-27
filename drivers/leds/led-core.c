@@ -108,6 +108,20 @@ static void set_brightness_delayed(struct work_struct *ws)
 		container_of(ws, struct led_classdev, set_brightness_work);
 	int ret = 0;
 
+	if (test_and_clear_bit(LED_BLINK_HW_SET, &led_cdev->work_flags)) {
+		if (led_cdev->blink_set)
+			ret = led_cdev->blink_set(led_cdev,
+						  &led_cdev->blink_delay_on,
+						  &led_cdev->blink_delay_off);
+		else if (led_cdev->blink_set_blocking)
+			ret = led_cdev->blink_set_blocking(led_cdev,
+						&led_cdev->blink_delay_on,
+						&led_cdev->blink_delay_off);
+		if (ret)
+			dev_err(led_cdev->dev,
+				"setting hardware blink failed (%d)\n", ret);
+	}
+
 	if (test_and_clear_bit(LED_BLINK_DISABLE, &led_cdev->work_flags)) {
 		led_cdev->delayed_set_value = LED_OFF;
 		led_stop_software_blink(led_cdev);
@@ -157,15 +171,44 @@ static void led_set_software_blink(struct led_classdev *led_cdev,
 	mod_timer(&led_cdev->blink_timer, jiffies + 1);
 }
 
+static int led_set_hardware_blink_nosleep(struct led_classdev *led_cdev,
+					   unsigned long *delay_on,
+					   unsigned long *delay_off)
+{
+	/* We have a non-blocking call, use it */
+	if (led_cdev->blink_set)
+		return led_cdev->blink_set(led_cdev, delay_on, delay_off);
+
+	/* Tell the worker to set up the blinking hardware */
+	if (delay_on)
+		led_cdev->blink_delay_on = *delay_on;
+	else
+		led_cdev->blink_delay_on = 0;
+	if (delay_off)
+		led_cdev->blink_delay_off = *delay_off;
+	else
+		led_cdev->blink_delay_off = 0;
+	set_bit(LED_BLINK_HW_SET, &led_cdev->work_flags);
+	schedule_work(&led_cdev->set_brightness_work);
+
+	return 0;
+}
 
 static void led_blink_setup(struct led_classdev *led_cdev,
 		     unsigned long *delay_on,
 		     unsigned long *delay_off)
 {
+	/*
+	 * If not oneshot, and we have hardware support for blinking,
+	 * relay the request to the driver.
+	 */
 	if (!test_bit(LED_BLINK_ONESHOT, &led_cdev->work_flags) &&
-	    led_cdev->blink_set &&
-	    !led_cdev->blink_set(led_cdev, delay_on, delay_off))
-		return;
+	    (led_cdev->blink_set || led_cdev->blink_set_blocking)) {
+		/* If this fails we fall back to software blink */
+		if (!led_set_hardware_blink_nosleep(led_cdev,
+						    delay_on, delay_off))
+			return;
+	}
 
 	/* blink with 1 Hz as default if nothing specified */
 	if (!*delay_on && !*delay_off)
