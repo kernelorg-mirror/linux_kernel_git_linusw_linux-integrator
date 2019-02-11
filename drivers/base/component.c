@@ -497,6 +497,10 @@ static void free_aggregate_device(struct aggregate_device *adev)
 	kfree(adev);
 }
 
+static struct component_match dummy_match = {
+	.num = 0,
+};
+
 /**
  * component_master_add_with_match - register an aggregate driver
  * @parent: parent device of the aggregate driver
@@ -515,6 +519,9 @@ int component_master_add_with_match(struct device *parent,
 {
 	struct aggregate_device *adev;
 	int ret;
+
+	if (!match)
+		match = &dummy_match;
 
 	/* Reallocate the match array for its true size */
 	ret = component_match_realloc(match, match->num);
