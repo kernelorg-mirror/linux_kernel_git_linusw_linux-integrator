@@ -501,6 +501,24 @@ static inline void mtd_align_erase_req(struct mtd_info *mtd,
 		req->len += mtd->erasesize - mod;
 }
 
+static inline uint64_t mtd_roundup_to_eb(uint64_t sz, struct mtd_info *mtd)
+{
+	if (mtd_mod_by_eb(sz, mtd) == 0)
+		return sz;
+
+	/* Round up to next erase block */
+	return (mtd_div_by_eb(sz, mtd) + 1) * mtd->erasesize;
+}
+
+static inline uint64_t mtd_rounddown_to_eb(uint64_t sz, struct mtd_info *mtd)
+{
+	if (mtd_mod_by_eb(sz, mtd) == 0)
+		return sz;
+
+	/* Round down to the start of the current erase block */
+	return (mtd_div_by_eb(sz, mtd)) * mtd->erasesize;
+}
+
 static inline uint32_t mtd_div_by_ws(uint64_t sz, struct mtd_info *mtd)
 {
 	if (mtd->writesize_shift)
