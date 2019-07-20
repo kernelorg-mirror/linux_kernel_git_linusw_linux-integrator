@@ -177,4 +177,10 @@ config MTD_SPLIT_WRGG_FW
 	  This splits up partitions in the D-Link WRGG partition
 	  format.
 
+config MTD_SPLIT_SQUASHFS
+	bool "Squashfs partition splitter"
+	help
+	  This splits up partitions by looking for magic numbers
+	  identifying squashfs partitions.
+
 endif

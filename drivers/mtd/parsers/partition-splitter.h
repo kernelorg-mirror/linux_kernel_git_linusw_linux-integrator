@@ -40,6 +40,11 @@ int mtdsplit_parse_wrgg(struct mtd_info *master,
 			uint64_t offset,
 			struct mtd_info *splitme,
 			const struct mtd_partition **pparts);
+int mtdsplit_parse_squashfs(struct mtd_info *master,
+			    struct mtd_info *parent,
+			    uint64_t offset,
+			    struct mtd_info *splitme,
+			    const struct mtd_partition **pparts);
 
 #else
 

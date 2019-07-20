@@ -37,6 +37,11 @@ static struct mtd_part_splitter __initdata splitter_table[] = {
 		.parse_fn = mtdsplit_parse_wrgg,
 		.type = MTD_SPLITTER_TYPE_FIRMWARE,
 	},
+	{
+		.name = "squashfs-splitter",
+		.parse_fn = mtdsplit_parse_squashfs,
+		.type = MTD_SPLITTER_TYPE_ROOTFS,
+	},
 };
 
 static int __init split_mtd_partitions_by_type(struct mtd_info *master,

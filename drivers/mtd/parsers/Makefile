@@ -11,3 +11,4 @@ obj-$(CONFIG_MTD_SHARPSL_PARTS)		+= sharpslpart.o
 obj-$(CONFIG_MTD_REDBOOT_PARTS)		+= redboot.o
 obj-$(CONFIG_MTD_PARTITION_SPLITTER)	+= partition-splitter.o
 obj-$(CONFIG_MTD_SPLIT_WRGG_FW)		+= split-wrgg.o
+obj-$(CONFIG_MTD_SPLIT_SQUASHFS)	+= split-squashfs.o
