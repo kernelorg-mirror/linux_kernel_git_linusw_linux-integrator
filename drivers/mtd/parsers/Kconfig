@@ -160,3 +160,21 @@ config MTD_REDBOOT_PARTS_READONLY
 	  'FIS directory' images, enable this option.
 
 endif # MTD_REDBOOT_PARTS
+
+config MTD_PARTITION_SPLITTER
+	bool "Partition splitter"
+	help
+	  This enables the partition splitter: this can split up a
+	  partition in new partitions based on the name and content
+	  of the partition, using things such as magic numbers.
+	  The splitting gets done using specific splitting parsers.
+
+if MTD_PARTITION_SPLITTER
+
+config MTD_SPLIT_WRGG_FW
+	bool "WRGG firmware partition splitter"
+	help
+	  This splits up partitions in the D-Link WRGG partition
+	  format.
+
+endif

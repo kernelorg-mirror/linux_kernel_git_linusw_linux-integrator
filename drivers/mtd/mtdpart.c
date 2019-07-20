@@ -19,6 +19,7 @@
 #include <linux/of.h>
 
 #include "mtdcore.h"
+#include "parsers/partition-splitter.h"
 
 /* Our partition linked list */
 static LIST_HEAD(mtd_partitions);
@@ -738,6 +739,8 @@ int add_mtd_partitions(struct mtd_info *master,
 			goto err_del_partitions;
 		}
 
+		mtd_partition_split(master, slave->parent, slave->offset,
+				    &slave->mtd);
 		mtd_add_partition_attrs(slave);
 		/* Look for subpartitions */
 		parse_mtd_partitions(&slave->mtd, parts[i].types, NULL);
