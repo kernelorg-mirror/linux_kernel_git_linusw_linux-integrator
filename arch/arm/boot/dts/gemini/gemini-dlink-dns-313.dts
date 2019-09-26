@@ -48,7 +48,7 @@
 			label = "dns313:blue:power";
 			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
-			linux,default-trigger = "heartbeat";
+			// linux,default-trigger = "heartbeat";
 		};
 		led-disk-blue {
 			label = "dns313:blue:disk";

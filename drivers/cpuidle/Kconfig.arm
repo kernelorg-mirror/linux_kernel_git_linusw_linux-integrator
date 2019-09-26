@@ -101,6 +101,14 @@ config ARM_EXYNOS_CPUIDLE
 	help
 	  Select this to enable cpuidle for Exynos processors.
 
+config ARM_GEMINI_CPUIDLE
+	bool "CPU Idle Driver for the Cortina Gemini SoCs"
+	default y
+	depends on ARCH_GEMINI && !ARM64
+	depends on MFD_SYSCON
+	help
+	  Select this to enable cpuidle for Cortina Gemini SoCs.
+
 config ARM_MVEBU_V7_CPUIDLE
 	bool "CPU Idle Driver for mvebu v7 family processors"
 	depends on (ARCH_MVEBU || COMPILE_TEST) && !ARM64

@@ -91,7 +91,7 @@
 			/* Collides with ICE */
 			gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
 			default-state = "on";
-			linux,default-trigger = "heartbeat";
+			// linux,default-trigger = "heartbeat";
 		};
 		/*
 		 * These two LEDs are on the side of the device.

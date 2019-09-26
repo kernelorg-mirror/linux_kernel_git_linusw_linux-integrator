@@ -98,11 +98,16 @@
 
 struct fttmr010 {
 	void __iomem *base;
-	unsigned int tick_rate;
+	unsigned int pclk_tick_rate;
+	unsigned int extclk_tick_rate;
 	bool is_aspeed;
+	bool sleep_on_extclk;
 	u32 t1_enable_val;
-	struct clock_event_device clkevt;
+	u32 t3_enable_val;
+	struct clock_event_device clkevt; /* Uses pclk */
+	struct clock_event_device extevt; /* Uses extclk */
 	int (*timer_shutdown)(struct clock_event_device *evt);
+	int (*timer3_shutdown)(struct clock_event_device *evt);
 #ifdef CONFIG_ARM
 	struct delay_timer delay_timer;
 #endif
@@ -117,6 +122,11 @@ static struct fttmr010 *local_fttmr;
 static inline struct fttmr010 *to_fttmr010(struct clock_event_device *evt)
 {
 	return container_of(evt, struct fttmr010, clkevt);
+}
+
+static inline struct fttmr010 *ext_to_fttmr010(struct clock_event_device *evt)
+{
+	return container_of(evt, struct fttmr010, extevt);
 }
 
 static unsigned long fttmr010_read_current_timer_down(void)
@@ -148,12 +158,51 @@ static int fttmr010_timer_set_next_event(unsigned long cycles,
 	return 0;
 }
 
+static int fttmr010_timer3_set_next_event(unsigned long cycles,
+					  struct clock_event_device *evt)
+{
+	struct fttmr010 *fttmr010 = ext_to_fttmr010(evt);
+	u32 cr;
+
+	/* Stop */
+	fttmr010->timer3_shutdown(evt);
+
+	if (fttmr010->is_aspeed) {
+		/*
+		 * ASPEED Timer Controller will load TIMER3_LOAD register
+		 * into TIMER3_COUNT register when the timer is re-enabled.
+		 */
+		writel(cycles, fttmr010->base + TIMER3_LOAD);
+	} else {
+		/* Setup the match register forward in time */
+		cr = readl(fttmr010->base + TIMER3_COUNT);
+		writel(cr + cycles, fttmr010->base + TIMER3_MATCH1);
+	}
+
+	/* Start */
+	cr = readl(fttmr010->base + TIMER_CR);
+	cr |= fttmr010->t3_enable_val;
+	writel(cr, fttmr010->base + TIMER_CR);
+
+	return 0;
+}
+
 static int ast2600_timer_shutdown(struct clock_event_device *evt)
 {
 	struct fttmr010 *fttmr010 = to_fttmr010(evt);
 
 	/* Stop */
 	writel(fttmr010->t1_enable_val, fttmr010->base + AST2600_TIMER_CR_CLR);
+
+	return 0;
+}
+
+static int ast2600_timer3_shutdown(struct clock_event_device *evt)
+{
+	struct fttmr010 *fttmr010 = ext_to_fttmr010(evt);
+
+	/* Stop */
+	writel(fttmr010->t3_enable_val, fttmr010->base + AST2600_TIMER_CR_CLR);
 
 	return 0;
 }
@@ -171,6 +220,19 @@ static int fttmr010_timer_shutdown(struct clock_event_device *evt)
 	return 0;
 }
 
+static int fttmr010_timer3_shutdown(struct clock_event_device *evt)
+{
+	struct fttmr010 *fttmr010 = ext_to_fttmr010(evt);
+	u32 cr;
+
+	/* Stop */
+	cr = readl(fttmr010->base + TIMER_CR);
+	cr &= ~fttmr010->t3_enable_val;
+	writel(cr, fttmr010->base + TIMER_CR);
+
+	return 0;
+}
+
 static int fttmr010_timer_set_oneshot(struct clock_event_device *evt)
 {
 	struct fttmr010 *fttmr010 = to_fttmr010(evt);
@@ -183,10 +245,36 @@ static int fttmr010_timer_set_oneshot(struct clock_event_device *evt)
 	return 0;
 }
 
+static int fttmr010_timer3_set_oneshot(struct clock_event_device *evt)
+{
+	struct fttmr010 *fttmr010 = ext_to_fttmr010(evt);
+	u32 cr;
+
+	pr_info("%s\n", __func__);
+	/* Stop */
+	fttmr010->timer3_shutdown(evt);
+
+	/* Setup counter start from 0 or ~0 */
+	writel(0, fttmr010->base + TIMER3_COUNT);
+	if (fttmr010->is_aspeed) {
+		writel(~0, fttmr010->base + TIMER3_LOAD);
+	} else {
+		writel(0, fttmr010->base + TIMER3_LOAD);
+
+		/* Enable interrupt */
+		cr = readl(fttmr010->base + TIMER_INTR_MASK);
+		cr &= ~(TIMER_3_INT_OVERFLOW | TIMER_3_INT_MATCH2);
+		cr |= TIMER_3_INT_MATCH1;
+		writel(cr, fttmr010->base + TIMER_INTR_MASK);
+	}
+
+	return 0;
+}
+
 static int fttmr010_timer_set_periodic(struct clock_event_device *evt)
 {
 	struct fttmr010 *fttmr010 = to_fttmr010(evt);
-	u32 period = DIV_ROUND_CLOSEST(fttmr010->tick_rate, HZ);
+	u32 period = DIV_ROUND_CLOSEST(fttmr010->pclk_tick_rate, HZ);
 	u32 cr;
 
 	/* Stop */
@@ -209,7 +297,7 @@ static int fttmr010_timer_set_periodic(struct clock_event_device *evt)
 static irqreturn_t fttmr010_timer_interrupt(int irq, void *dev_id)
 {
 	struct fttmr010 *fttmr010 = dev_id;
-	struct clock_event_device *evt = &fttmr010->clkevt;
+	struct clock_event_device *evt = NULL;
 	u32 val;
 
 	if (fttmr010->is_aspeed) {
@@ -224,28 +312,37 @@ static irqreturn_t fttmr010_timer_interrupt(int irq, void *dev_id)
 
 	val = readl(fttmr010->base + TIMER_INTR_STATE);
 	if (val & TIMER_1_INT_MATCH1)
-		evt->event_handler(evt);
-	else
-		/* Spurious IRQ */
-		return IRQ_NONE;
+		evt = &fttmr010->clkevt;
+	if (val & TIMER_3_INT_MATCH1)
+		evt = &fttmr010->extevt;
 
-	return IRQ_HANDLED;
+	if (evt) {
+		evt->event_handler(evt);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
 }
 
 static irqreturn_t ast2600_timer_interrupt(int irq, void *dev_id)
 {
 	struct fttmr010 *fttmr010 = dev_id;
-	struct clock_event_device *evt = &fttmr010->clkevt;
+	struct clock_event_device *evt = NULL;
 	u32 val;
 
 	val = readl(fttmr010->base + TIMER_INTR_STATE);
 	if (val & TIMER_1_INT_MATCH1) {
 		writel(TIMER_1_INT_MATCH1, fttmr010->base + TIMER_INTR_STATE);
+		evt = &fttmr010->clkevt;
+	}
+	if (val & TIMER_3_INT_MATCH1) {
+		writel(TIMER_3_INT_MATCH1, fttmr010->base + TIMER_INTR_STATE);
+		evt = &fttmr010->extevt;
+	}
+
+	if (evt) {
 		evt->event_handler(evt);
-	} else {
-		/* Just clear any spurious IRQs from the block */
-		writel(val, fttmr010->base + TIMER_INTR_STATE);
-		return IRQ_NONE;
+		return IRQ_HANDLED;
 	}
 
 	return IRQ_HANDLED;
@@ -256,32 +353,43 @@ static int __init fttmr010_common_init(struct device_node *np,
 {
 	struct fttmr010 *fttmr010;
 	int irq;
-	struct clk *clk;
+	struct clk *pclk;
+	struct clk *extclk;
 	int ret;
 	u32 val;
 
-	/*
-	 * These implementations require a clock reference.
-	 * FIXME: we currently only support clocking using PCLK
-	 * and using EXTCLK is not supported in the driver.
-	 */
-	clk = of_clk_get_by_name(np, "PCLK");
-	if (IS_ERR(clk)) {
+	pclk = of_clk_get_by_name(np, "PCLK");
+	if (IS_ERR(pclk)) {
 		pr_err("could not get PCLK\n");
-		return PTR_ERR(clk);
+		return PTR_ERR(pclk);
 	}
-	ret = clk_prepare_enable(clk);
+	ret = clk_prepare_enable(pclk);
 	if (ret) {
 		pr_err("failed to enable PCLK\n");
 		return ret;
 	}
 
+	extclk = of_clk_get_by_name(np, "EXTCLK");
+	if (IS_ERR(extclk)) {
+		pr_info("no EXTCLK support\n");
+	} else {
+		ret = clk_prepare_enable(extclk);
+		if (ret) {
+			pr_err("failed to enable EXTCLK\n");
+			goto out_disable_pclk;
+		}
+	}
+
 	fttmr010 = kzalloc(sizeof(*fttmr010), GFP_KERNEL);
 	if (!fttmr010) {
 		ret = -ENOMEM;
-		goto out_disable_clock;
+		goto out_disable_extclk;
 	}
-	fttmr010->tick_rate = clk_get_rate(clk);
+	fttmr010->pclk_tick_rate = clk_get_rate(pclk);
+	if (!IS_ERR(extclk)) {
+		fttmr010->extclk_tick_rate = clk_get_rate(extclk);
+		fttmr010->sleep_on_extclk = true;
+	}
 
 	fttmr010->base = of_iomap(np, 0);
 	if (!fttmr010->base) {
@@ -303,10 +411,13 @@ static int __init fttmr010_common_init(struct device_node *np,
 	if (is_aspeed) {
 		fttmr010->t1_enable_val = TIMER_1_CR_ASPEED_ENABLE |
 			TIMER_1_CR_ASPEED_INT;
+		fttmr010->t3_enable_val = TIMER_3_CR_ASPEED_ENABLE |
+			TIMER_3_CR_ASPEED_INT | TIMER_3_CR_ASPEED_CLOCK;
 		fttmr010->is_aspeed = true;
 	} else {
 		fttmr010->t1_enable_val = TIMER_1_CR_ENABLE | TIMER_1_CR_INT;
-
+		fttmr010->t3_enable_val = TIMER_3_CR_ENABLE | TIMER_3_CR_INT |
+			TIMER_3_CR_CLOCK;
 		/*
 		 * Reset the interrupt mask and status
 		 */
@@ -333,11 +444,10 @@ static int __init fttmr010_common_init(struct device_node *np,
 	writel(~0, fttmr010->base + TIMER2_LOAD);
 	clocksource_mmio_init(fttmr010->base + TIMER2_COUNT,
 			      "FTTMR010-TIMER2",
-			      fttmr010->tick_rate,
+			      fttmr010->pclk_tick_rate,
 			      300, 32, clocksource_mmio_readl_down);
 	sched_clock_register(fttmr010_read_sched_clock_down, 32,
-			     fttmr010->tick_rate);
-
+			     fttmr010->pclk_tick_rate);
 	/*
 	 * Setup clockevent timer (interrupt-driven) on timer 1.
 	 */
@@ -348,11 +458,13 @@ static int __init fttmr010_common_init(struct device_node *np,
 
 	if (is_ast2600) {
 		fttmr010->timer_shutdown = ast2600_timer_shutdown;
+		fttmr010->timer3_shutdown = ast2600_timer3_shutdown;
 		ret = request_irq(irq, ast2600_timer_interrupt,
 				  IRQF_TIMER, "FTTMR010-TIMER1",
 				  fttmr010);
 	} else {
 		fttmr010->timer_shutdown = fttmr010_timer_shutdown;
+		fttmr010->timer3_shutdown = fttmr010_timer3_shutdown;
 		ret = request_irq(irq, fttmr010_timer_interrupt,
 				  IRQF_TIMER, "FTTMR010-TIMER1",
 				  fttmr010);
@@ -367,6 +479,9 @@ static int __init fttmr010_common_init(struct device_node *np,
 	fttmr010->clkevt.rating = 300;
 	fttmr010->clkevt.features = CLOCK_EVT_FEAT_PERIODIC |
 		CLOCK_EVT_FEAT_ONESHOT;
+	/* The pclk will stop at C3, but we will reprogram it to use extclk */
+	if (fttmr010->sleep_on_extclk)
+		fttmr010->clkevt.features |= CLOCK_EVT_FEAT_C3STOP;
 	fttmr010->clkevt.set_next_event = fttmr010_timer_set_next_event;
 	fttmr010->clkevt.set_state_shutdown = fttmr010->timer_shutdown;
 	fttmr010->clkevt.set_state_periodic = fttmr010_timer_set_periodic;
@@ -375,14 +490,36 @@ static int __init fttmr010_common_init(struct device_node *np,
 	fttmr010->clkevt.cpumask = cpumask_of(0);
 	fttmr010->clkevt.irq = irq;
 	clockevents_config_and_register(&fttmr010->clkevt,
-					fttmr010->tick_rate,
+					fttmr010->pclk_tick_rate,
 					1, 0xffffffff);
+
+	if (fttmr010->sleep_on_extclk) {
+		writel(0, fttmr010->base + TIMER3_COUNT);
+		writel(0, fttmr010->base + TIMER3_LOAD);
+		writel(0, fttmr010->base + TIMER3_MATCH1);
+		writel(0, fttmr010->base + TIMER3_MATCH2);
+
+		/* Register a second clockevent on timer 3 for sleeping on extclk */
+		fttmr010->extevt.name = "FTTMR010-TIMER3";
+		/* Not very good only oneshot timer */
+		fttmr010->extevt.rating = 100;
+		fttmr010->extevt.features = CLOCK_EVT_FEAT_ONESHOT;
+		fttmr010->extevt.set_next_event = fttmr010_timer3_set_next_event;
+		fttmr010->extevt.set_state_shutdown = fttmr010->timer3_shutdown;
+		fttmr010->extevt.set_state_oneshot = fttmr010_timer3_set_oneshot;
+		fttmr010->extevt.tick_resume = fttmr010->timer3_shutdown;
+		fttmr010->extevt.cpumask = cpumask_of(0);
+		fttmr010->extevt.irq = irq;
+		clockevents_config_and_register(&fttmr010->extevt,
+						fttmr010->extclk_tick_rate,
+						1, 0xffffffff);
+	}
 
 #ifdef CONFIG_ARM
 	/* Also use this timer for delays */
 	fttmr010->delay_timer.read_current_timer =
 		fttmr010_read_current_timer_down;
-	fttmr010->delay_timer.freq = fttmr010->tick_rate;
+	fttmr010->delay_timer.freq = fttmr010->pclk_tick_rate;
 	register_current_timer_delay(&fttmr010->delay_timer);
 #endif
 
@@ -392,8 +529,11 @@ out_unmap:
 	iounmap(fttmr010->base);
 out_free:
 	kfree(fttmr010);
-out_disable_clock:
-	clk_disable_unprepare(clk);
+out_disable_extclk:
+	if (!IS_ERR(extclk))
+		clk_disable_unprepare(extclk);
+out_disable_pclk:
+	clk_disable_unprepare(pclk);
 
 	return ret;
 }

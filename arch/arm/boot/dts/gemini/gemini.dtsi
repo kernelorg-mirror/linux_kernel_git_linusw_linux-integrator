@@ -9,6 +9,27 @@
 #include <dt-bindings/gpio/gpio.h>
 
 / {
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "faraday,fa526";
+			reg = <0>;
+			cpu-idle-states = <&cpu_sleep_wait>;
+		};
+
+		idle-states {
+			cpu_sleep_wait: cpu-sleep-wait {
+				compatible = "arm,idle-state";
+				entry-latency-us = <150>;
+				exit-latency-us = <200>;
+				min-residency-us = <2000>;
+			};
+		};
+	};
+
 	soc {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -39,6 +60,11 @@
 				offset = <0x0c>;
 				/* RESET_GLOBAL | RESET_CPU1 */
 				mask = <0xC0000000>;
+			};
+
+			cpuidle {
+				compatible = "cortina,gemini-cpuidle";
+				regmap = <&syscon>;
 			};
 
 			pinctrl {
