@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/iversion.h>
 #include <linux/unicode.h>
+#include <linux/personality.h>
 #include "ext4.h"
 #include "xattr.h"
 
@@ -618,6 +619,14 @@ finished:
 
 static int ext4_dir_open(struct inode * inode, struct file * filp)
 {
+	/*
+	 * If we are currently running e.g. a 32 bit emulator on
+	 * a 64 bit machine, the emulator will indicate that it needs
+	 * a 32 bit personality and thus 32 bit hashes from the file
+	 * system.
+	 */
+	if (personality(current->personality) == PER_LINUX32)
+		filp->f_mode |= FMODE_32BITHASH;
 	if (IS_ENCRYPTED(inode))
 		return fscrypt_get_encryption_info(inode) ? -EACCES : 0;
 	return 0;
