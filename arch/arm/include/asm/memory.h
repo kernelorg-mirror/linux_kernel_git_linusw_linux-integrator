@@ -247,7 +247,17 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 
 static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 {
-	return (phys_addr_t)x - PAGE_OFFSET + PHYS_OFFSET;
+	phys_addr_t __x = (phys_addr_t)x;
+
+	if (__x >= KIMAGE_OFFSET)
+		return __x - KIMAGE_OFFSET + PHYS_OFFSET;
+	else
+		return __x - PAGE_OFFSET + PHYS_OFFSET;
+}
+
+static inline unsigned long __phys_to_kimg(phys_addr_t x)
+{
+	return x - PHYS_OFFSET + KIMAGE_OFFSET;
 }
 
 static inline unsigned long __phys_to_virt(phys_addr_t x)
