@@ -45,7 +45,7 @@ SECTIONS
 #endif
 	}
 
-	. = PAGE_OFFSET + TEXT_OFFSET;
+	. = KIMAGE_OFFSET + TEXT_OFFSET;
 	.head.text : {
 		_text = .;
 		HEAD_TEXT

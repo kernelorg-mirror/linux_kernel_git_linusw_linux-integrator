@@ -29,9 +29,9 @@
  * We place the page tables 16K below KERNEL_RAM_VADDR.  Therefore, we must
  * make sure that KERNEL_RAM_VADDR is correctly set.  Currently, we expect
  * the least significant 16 bits to be 0x8000, but we could probably
- * relax this restriction to KERNEL_RAM_VADDR >= PAGE_OFFSET + 0x4000.
+ * relax this restriction to KERNEL_RAM_VADDR >= KIMAGE_OFFSET + 0x4000.
  */
-#define KERNEL_RAM_VADDR	(PAGE_OFFSET + TEXT_OFFSET)
+#define KERNEL_RAM_VADDR	(KIMAGE_OFFSET + TEXT_OFFSET)
 #if (KERNEL_RAM_VADDR & 0xffff) != 0x8000
 #error KERNEL_RAM_VADDR must start at 0xXXXX8000
 #endif
@@ -105,7 +105,7 @@ ENTRY(stext)
 #ifndef CONFIG_XIP_KERNEL
 	adr	r3, 2f
 	ldmia	r3, {r4, r8}
-	sub	r4, r3, r4			@ (PHYS_OFFSET - PAGE_OFFSET)
+	sub	r4, r3, r4			@ (PHYS_OFFSET - KIMAGE_OFFSET)
 	add	r8, r8, r4			@ PHYS_OFFSET
 #else
 	ldr	r8, =PLAT_PHYS_OFFSET		@ always constant in this case
@@ -160,7 +160,7 @@ ENDPROC(stext)
 	.ltorg
 #ifndef CONFIG_XIP_KERNEL
 2:	.long	.
-	.long	PAGE_OFFSET
+	.long	KIMAGE_OFFSET
 #endif
 
 /*
@@ -241,7 +241,7 @@ __create_page_tables:
 	/*
 	 * Map our RAM from the start to the end of the kernel .bss section.
 	 */
-	add	r0, r4, #PAGE_OFFSET >> (SECTION_SHIFT - PMD_ORDER)
+	add	r0, r4, #KIMAGE_OFFSET >> (SECTION_SHIFT - PMD_ORDER)
 	ldr	r6, =(_end - 1)
 	orr	r3, r8, r7
 	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)
@@ -276,7 +276,7 @@ __create_page_tables:
 	mov	r0, r2, lsr #SECTION_SHIFT
 	movs	r0, r0, lsl #SECTION_SHIFT
 	subne	r3, r0, r8
-	addne	r3, r3, #PAGE_OFFSET
+	addne	r3, r3, #KIMAGE_OFFSET
 	addne	r3, r4, r3, lsr #(SECTION_SHIFT - PMD_ORDER)
 	orrne	r6, r7, r0
 	strne	r6, [r3], #1 << PMD_ORDER
