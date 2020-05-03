@@ -1454,12 +1454,14 @@ static void __init map_kernel(void)
 	map.length = kernel_x_end - kernel_x_start;
 	map.type = MT_MEMORY_RWX;
 	create_mapping(&map);
+	vm_reserve_kernel(&map);
 
 	map.pfn = __phys_to_pfn(kernel_nx_start);
 	map.virtual = __phys_to_kimg(kernel_nx_start);
 	map.length = kernel_nx_end - kernel_nx_start;
 	map.type = MT_MEMORY_RW;
 	create_mapping(&map);
+	vm_reserve_kernel(&map);
 }
 
 static void __init map_lowmem(void)
