@@ -37,6 +37,7 @@ enum {
 
 #ifdef CONFIG_MMU
 extern void iotable_init(struct map_desc *, int);
+extern void vm_reserve_kernel(struct map_desc *md);
 extern void vm_reserve_area_early(unsigned long addr, unsigned long size,
 				  void *caller);
 extern void create_mapping_late(struct mm_struct *mm, struct map_desc *md,
@@ -59,6 +60,7 @@ extern int ioremap_page(unsigned long virt, unsigned long phys,
 #else
 #define iotable_init(map,num)	do { } while (0)
 #define vm_reserve_area_early(a,s,c)	do { } while (0)
+#define vm_reserve_kernel(md)	do { } while (0)
 #endif
 
 #endif

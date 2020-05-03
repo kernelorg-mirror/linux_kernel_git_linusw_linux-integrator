@@ -989,6 +989,26 @@ void __init iotable_init(struct map_desc *io_desc, int nr)
 	}
 }
 
+void __init vm_reserve_kernel(struct map_desc *md)
+{
+	struct vm_struct *vm;
+	struct static_vm *svm;
+
+	svm = memblock_alloc(sizeof(*svm), __alignof__(*svm));
+	if (!svm)
+		panic("%s: Failed to allocate %zu bytes align=0x%zx\n",
+		      __func__, sizeof(*svm), __alignof__(*svm));
+
+	vm = &svm->vm;
+	vm->addr = (void *)(md->virtual & PAGE_MASK);
+	vm->size = PAGE_ALIGN(md->length + (md->virtual & ~PAGE_MASK));
+	vm->phys_addr = __pfn_to_phys(md->pfn);
+	vm->flags = VM_MAP | VM_ARM_STATIC_MAPPING;
+	vm->flags |= VM_ARM_MTYPE(md->type);
+	vm->caller = vm_reserve_kernel;
+	add_static_vm_early(svm);
+}
+
 void __init vm_reserve_area_early(unsigned long addr, unsigned long size,
 				  void *caller)
 {
