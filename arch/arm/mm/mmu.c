@@ -1451,6 +1451,12 @@ static void __init map_kernel(void)
 	phys_addr_t kernel_nx_start = kernel_x_end;
 	struct map_desc map;
 
+	map.pfn = __phys_to_pfn(__pa(KIMAGE_OFFSET));
+	map.virtual = KIMAGE_OFFSET;
+	map.length = kernel_x_start - __pa(KIMAGE_OFFSET);
+	map.type = MT_MEMORY_RW;
+	vm_reserve_kernel(&map);
+
 	map.pfn = __phys_to_pfn(kernel_x_start);
 	map.virtual = __phys_to_kimg(kernel_x_start);
 	map.length = kernel_x_end - kernel_x_start;
