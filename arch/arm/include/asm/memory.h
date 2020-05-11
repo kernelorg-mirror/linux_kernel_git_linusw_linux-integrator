@@ -21,7 +21,7 @@
 
 /* PAGE_OFFSET - the virtual address of the start of the kernel image */
 #define PAGE_OFFSET		UL(CONFIG_PAGE_OFFSET)
-#define KIMAGE_OFFSET		0xf0000000
+#define KIMAGE_OFFSET		0xf1000000
 
 #ifdef CONFIG_MMU
 
