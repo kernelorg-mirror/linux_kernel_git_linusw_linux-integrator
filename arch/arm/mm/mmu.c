@@ -358,7 +358,7 @@ static inline pmd_t * __init fixmap_pmd(unsigned long addr)
 {
 	pgd_t *pgd = pgd_offset_k(addr);
 	pud_t *pud = pud_offset(pgd, addr);
-	pmd_t *pmd = pmd_offset(pud, addr);
+	pmd_t *pmd = pmd_offset_k(pud, addr);
 
 	return pmd;
 }
@@ -774,7 +774,7 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 				      const struct mem_type *type,
 				      void *(*alloc)(unsigned long sz), bool ng)
 {
-	pmd_t *pmd = pmd_offset(pud, addr);
+	pmd_t *pmd = pmd_offset_k(pud, addr);
 	unsigned long next;
 
 	do {
