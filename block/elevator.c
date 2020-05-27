@@ -619,6 +619,9 @@ void elevator_init_mq(struct request_queue *q)
 	if (unlikely(q->elevator))
 		return;
 
+	if (q->nr_hw_queues == 1)
+		q->required_elevator_features |= ELEVATOR_F_SINGLE_HW_QUEUE;
+
 	if (!q->required_elevator_features)
 		e = elevator_get_default(q);
 	else
