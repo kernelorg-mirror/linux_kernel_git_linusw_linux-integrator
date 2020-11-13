@@ -17,6 +17,7 @@
 #include <linux/acpi.h>
 #include <linux/of_device.h>
 #include <linux/pm.h>
+#include <linux/regulator/consumer.h>
 
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
@@ -138,6 +139,7 @@ struct mmc35240_data {
 	struct i2c_client *client;
 	struct mutex mutex;
 	struct regmap *regmap;
+	struct regulator_bulk_data regulators[2];
 	enum mmc35240_resolution res;
 
 	/* OTP compensation */
@@ -557,6 +559,23 @@ static const struct regmap_config mmc35240_regmap_config = {
 	.num_reg_defaults = ARRAY_SIZE(mmc35240_reg_defaults),
 };
 
+static int mmc35240_power_on(struct mmc35240_data *data)
+{
+	int ret;
+
+	ret = regulator_bulk_enable(ARRAY_SIZE(data->regulators),
+				    data->regulators);
+	if (ret) {
+		dev_err(&data->client->dev,
+			"failed to enable regulators: %d\n", ret);
+		return ret;
+	}
+	/* t_op is 20 us according to datasheet */
+	usleep_range(20, 50);
+
+	return 0;
+}
+
 static int mmc35240_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
@@ -600,6 +619,22 @@ static int mmc35240_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
+	/*
+	 * VDA  is the main voltage supply
+	 * VDD  is the I2C digital I/O voltage supply
+	 */
+	data->regulators[0].supply = "vda";
+	data->regulators[1].supply = "vdd";
+	ret = devm_regulator_bulk_get(dev,
+				      ARRAY_SIZE(data->regulators),
+				      data->regulators);
+	if (ret)
+		return dev_err_probe(dev, ret, "failed to get regulators\n");
+
+	ret = mmc35240_power_on(data);
+	if (ret)
+		return ret;
+
 	mutex_init(&data->mutex);
 
 	indio_dev->info = &mmc35240_info;
@@ -614,9 +649,28 @@ static int mmc35240_probe(struct i2c_client *client,
 		ret = mmc35240_init(data);
 	if (ret < 0) {
 		dev_err(dev, "chip init failed\n");
-		return ret;
+		goto out_reg_off;
 	}
-	return devm_iio_device_register(dev, indio_dev);
+	ret = devm_iio_device_register(dev, indio_dev);
+	if (ret)
+		goto out_reg_off;
+
+	return 0;
+
+out_reg_off:
+	regulator_bulk_disable(ARRAY_SIZE(data->regulators),
+			       data->regulators);
+	return ret;
+}
+
+static int mmc35240_remove(struct i2c_client *client)
+{
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+	struct mmc35240_data *data = iio_priv(indio_dev);
+
+	regulator_bulk_disable(ARRAY_SIZE(data->regulators),
+			       data->regulators);
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -626,6 +680,8 @@ static int mmc35240_suspend(struct device *dev)
 	struct mmc35240_data *data = iio_priv(indio_dev);
 
 	regcache_cache_only(data->regmap, true);
+	regulator_bulk_disable(ARRAY_SIZE(data->regulators),
+			       data->regulators);
 
 	return 0;
 }
@@ -635,6 +691,10 @@ static int mmc35240_resume(struct device *dev)
 	struct iio_dev *indio_dev = i2c_get_clientdata(to_i2c_client(dev));
 	struct mmc35240_data *data = iio_priv(indio_dev);
 	int ret;
+
+	ret = mmc35240_power_on(data);
+	if (ret)
+		return ret;
 
 	regcache_mark_dirty(data->regmap);
 	ret = regcache_sync_region(data->regmap, MMC35240_REG_CTRL0,
@@ -686,6 +746,7 @@ static struct i2c_driver mmc35240_driver = {
 		.acpi_match_table = ACPI_PTR(mmc35240_acpi_match),
 	},
 	.probe		= mmc35240_probe,
+	.remove		= mmc35240_remove,
 	.id_table	= mmc35240_id,
 };
 
