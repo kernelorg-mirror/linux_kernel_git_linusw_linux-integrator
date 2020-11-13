@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/regmap.h>
 #include <linux/acpi.h>
+#include <linux/of_device.h>
 #include <linux/pm.h>
 
 #include <linux/iio/iio.h>
@@ -43,6 +44,8 @@
 #define MMC35240_CTRL0_SET_BIT		BIT(5)
 #define MMC35240_CTRL0_CMM_BIT		BIT(1)
 #define MMC35240_CTRL0_TM_BIT		BIT(0)
+
+#define MMC328XMS_CTRL0_RM_BIT		BIT(5)
 
 /* output resolution bits */
 #define MMC35240_CTRL1_BW0_BIT		BIT(0)
@@ -80,11 +83,17 @@
 
 #define MMC35240_OTP_START_ADDR		0x1B
 
+enum mmc_variant {
+	MMC35240,
+	MMC328XMS,
+};
+
 enum mmc35240_resolution {
 	MMC35240_16_BITS_SLOW = 0, /* 7.92 ms */
 	MMC35240_16_BITS_FAST,     /* 4.08 ms */
 	MMC35240_14_BITS,          /* 2.16 ms */
 	MMC35240_12_BITS,          /* 1.20 ms */
+	MMC328XMS_14_BITS,         /* 7 ms */
 };
 
 enum mmc35240_axis {
@@ -97,29 +106,35 @@ static const struct {
 	int sens[3]; /* sensitivity per X, Y, Z axis */
 	int nfo; /* null field output */
 } mmc35240_props_table[] = {
-	/* 16 bits, 125Hz ODR */
+	/* MMC35240 16 bits, 125Hz ODR */
 	{
 		{1024, 1024, 1024},
 		32768,
 	},
-	/* 16 bits, 250Hz ODR */
+	/* MMC35240 16 bits, 250Hz ODR */
 	{
 		{1024, 1024, 770},
 		32768,
 	},
-	/* 14 bits, 450Hz ODR */
+	/* MMC35240 14 bits, 450Hz ODR */
 	{
 		{256, 256, 193},
 		8192,
 	},
-	/* 12 bits, 800Hz ODR */
+	/* MMC35240 12 bits, 800Hz ODR */
 	{
 		{64, 64, 48},
 		2048,
 	},
+	/* MMC328XMS 14 bits, 142Hz ODR */
+	{
+		{512, 512, 512},
+		4096,
+	},
 };
 
 struct mmc35240_data {
+	enum mmc_variant variant;
 	struct i2c_client *client;
 	struct mutex mutex;
 	struct regmap *regmap;
@@ -130,15 +145,17 @@ struct mmc35240_data {
 	int axis_scale[3];
 };
 
-static const struct {
-	int val;
-	int val2;
-} mmc35240_samp_freq[] = { {1, 500000},
-			   {13, 0},
-			   {25, 0},
-			   {50, 0} };
+static const int mmc35240_samp_freq[][2] = {
+	{1, 500000},
+	{13, 0},
+	{25, 0},
+	{50, 0},
+};
 
-static IIO_CONST_ATTR_SAMP_FREQ_AVAIL("1.5 13 25 50");
+/* The manual mentions 50 samples per second so we stick with that */
+static const int mmc328xms_samp_freq[][2] = {
+	{50, 0},
+};
 
 #define MMC35240_CHANNEL(_axis) { \
 	.type = IIO_MAGN, \
@@ -156,23 +173,14 @@ static const struct iio_chan_spec mmc35240_channels[] = {
 	MMC35240_CHANNEL(Z),
 };
 
-static struct attribute *mmc35240_attributes[] = {
-	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
-	NULL
-};
-
-static const struct attribute_group mmc35240_attribute_group = {
-	.attrs = mmc35240_attributes,
-};
-
 static int mmc35240_get_samp_freq_index(struct mmc35240_data *data,
 					int val, int val2)
 {
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(mmc35240_samp_freq); i++)
-		if (mmc35240_samp_freq[i].val == val &&
-		    mmc35240_samp_freq[i].val2 == val2)
+		if (mmc35240_samp_freq[i][0] == val &&
+		    mmc35240_samp_freq[i][1] == val2)
 			return i;
 	return -EINVAL;
 }
@@ -258,6 +266,24 @@ static int mmc35240_init(struct mmc35240_data *data)
 	return 0;
 }
 
+static int mmc328xms_init(struct mmc35240_data *data)
+{
+	int ret;
+
+	/* Reset magnetization "RM" */
+	ret = regmap_write(data->regmap, MMC35240_REG_CTRL0,
+			   MMC328XMS_CTRL0_RM_BIT);
+	if (ret < 0) {
+		dev_err(&data->client->dev, "failed to reset magnetization\n");
+		return ret;
+	}
+
+	/* Wait at least 100 us according to datasheet */
+	usleep_range(100, 200);
+
+	return 0;
+}
+
 static int mmc35240_take_measurement(struct mmc35240_data *data)
 {
 	int ret, tries = 100;
@@ -275,8 +301,14 @@ static int mmc35240_take_measurement(struct mmc35240_data *data)
 			return ret;
 		if (reg_status & MMC35240_STATUS_MEAS_DONE_BIT)
 			break;
-		/* minimum wait time to complete measurement is 10 ms */
-		usleep_range(10000, 11000);
+		/*
+		 * minimum wait time to complete measurement is 10 ms
+		 * on MMC35240 and 7 ms on MMC328XMS
+		 */
+		if (data->variant == MMC328XMS)
+			usleep_range(7000, 8000);
+		else
+			usleep_range(10000, 11000);
 	}
 
 	if (tries < 0) {
@@ -342,7 +374,12 @@ static int mmc35240_raw_to_mgauss(struct mmc35240_data *data, int index,
 	default:
 		return -EINVAL;
 	}
-	/* apply OTP compensation */
+
+	/* This variant doesn't have any OTP compensation */
+	if (data->variant == MMC328XMS)
+		return 0;
+
+	/* MMC35240: apply OTP compensation */
 	*val = (*val) * data->axis_coef[index] / data->axis_scale[index];
 
 	return 0;
@@ -373,6 +410,13 @@ static int mmc35240_read_raw(struct iio_dev *indio_dev,
 		*val2 = 1000;
 		return IIO_VAL_INT_PLUS_MICRO;
 	case IIO_CHAN_INFO_SAMP_FREQ:
+		if (data->variant == MMC328XMS) {
+			/* Just one frequency supported */
+			*val = mmc328xms_samp_freq[0][0];
+			*val2 = mmc328xms_samp_freq[0][1];
+			return IIO_VAL_INT_PLUS_MICRO;
+		}
+		/* MMC35240 variant */
 		mutex_lock(&data->mutex);
 		ret = regmap_read(data->regmap, MMC35240_REG_CTRL1, &reg);
 		mutex_unlock(&data->mutex);
@@ -383,12 +427,41 @@ static int mmc35240_read_raw(struct iio_dev *indio_dev,
 		if (i < 0 || i >= ARRAY_SIZE(mmc35240_samp_freq))
 			return -EINVAL;
 
-		*val = mmc35240_samp_freq[i].val;
-		*val2 = mmc35240_samp_freq[i].val2;
+		*val = mmc35240_samp_freq[i][0];
+		*val2 = mmc35240_samp_freq[i][1];
 		return IIO_VAL_INT_PLUS_MICRO;
 	default:
 		return -EINVAL;
 	}
+}
+
+static int mmc35240_read_avail(struct iio_dev *indio_dev,
+			       struct iio_chan_spec const *chan,
+			       const int **vals, int *type, int *length,
+			       long mask)
+{
+	struct mmc35240_data *data = iio_priv(indio_dev);
+
+	/* We only support sampling frequency setting */
+	if (mask != IIO_CHAN_INFO_SAMP_FREQ)
+		return -EINVAL;
+
+	*type = IIO_VAL_INT_PLUS_MICRO;
+
+	switch (data->variant) {
+	case MMC35240:
+		*vals = (int *)mmc35240_samp_freq;
+		*length = 2 * ARRAY_SIZE(mmc35240_samp_freq);
+		break;
+	case MMC328XMS:
+		*vals = (int *)mmc328xms_samp_freq;
+		*length = 2 * ARRAY_SIZE(mmc328xms_samp_freq);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return IIO_AVAIL_LIST;
 }
 
 static int mmc35240_write_raw(struct iio_dev *indio_dev,
@@ -400,6 +473,9 @@ static int mmc35240_write_raw(struct iio_dev *indio_dev,
 
 	switch (mask) {
 	case IIO_CHAN_INFO_SAMP_FREQ:
+		if (data->variant == MMC328XMS)
+			/* This variant can't change sample frequency */
+			return -EINVAL;
 		i = mmc35240_get_samp_freq_index(data, val, val2);
 		if (i < 0)
 			return -EINVAL;
@@ -416,8 +492,8 @@ static int mmc35240_write_raw(struct iio_dev *indio_dev,
 
 static const struct iio_info mmc35240_info = {
 	.read_raw	= mmc35240_read_raw,
+	.read_avail	= mmc35240_read_avail,
 	.write_raw	= mmc35240_write_raw,
-	.attrs		= &mmc35240_attribute_group,
 };
 
 static bool mmc35240_is_writeable_reg(struct device *dev, unsigned int reg)
@@ -487,9 +563,11 @@ static int mmc35240_probe(struct i2c_client *client,
 	struct mmc35240_data *data;
 	struct iio_dev *indio_dev;
 	struct regmap *regmap;
+	struct device *dev = &client->dev;
+	enum mmc_variant variant;
 	int ret;
 
-	indio_dev = devm_iio_device_alloc(&client->dev, sizeof(*data));
+	indio_dev = devm_iio_device_alloc(dev, sizeof(*data));
 	if (!indio_dev)
 		return -ENOMEM;
 
@@ -503,7 +581,24 @@ static int mmc35240_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, indio_dev);
 	data->client = client;
 	data->regmap = regmap;
-	data->res = MMC35240_16_BITS_SLOW;
+
+	if (dev->of_node)
+		variant = (enum mmc_variant)of_device_get_match_data(dev);
+	else
+		variant = id->driver_data;
+	data->variant = variant;
+
+	switch (variant) {
+	case MMC35240:
+		data->res = MMC35240_16_BITS_SLOW;
+		break;
+	case MMC328XMS:
+		data->res = MMC328XMS_14_BITS;
+		break;
+	default:
+		dev_err(dev, "unknown MMC variant\n");
+		return -ENODEV;
+	}
 
 	mutex_init(&data->mutex);
 
@@ -513,12 +608,15 @@ static int mmc35240_probe(struct i2c_client *client,
 	indio_dev->num_channels = ARRAY_SIZE(mmc35240_channels);
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
-	ret = mmc35240_init(data);
+	if (variant == MMC328XMS)
+		ret = mmc328xms_init(data);
+	else
+		ret = mmc35240_init(data);
 	if (ret < 0) {
-		dev_err(&client->dev, "mmc35240 chip init failed\n");
+		dev_err(dev, "chip init failed\n");
 		return ret;
 	}
-	return devm_iio_device_register(&client->dev, indio_dev);
+	return devm_iio_device_register(dev, indio_dev);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -555,19 +653,27 @@ static const struct dev_pm_ops mmc35240_pm_ops = {
 };
 
 static const struct of_device_id mmc35240_of_match[] = {
-	{ .compatible = "memsic,mmc35240", },
+	{
+		.compatible = "memsic,mmc35240",
+		.data = (void *)MMC35240,
+	},
+	{
+		.compatible = "memsic,mmc328xms",
+		.data = (void *)MMC328XMS,
+	},
 	{ }
 };
 MODULE_DEVICE_TABLE(of, mmc35240_of_match);
 
 static const struct acpi_device_id mmc35240_acpi_match[] = {
-	{"MMC35240", 0},
+	{"MMC35240", MMC35240 },
 	{ },
 };
 MODULE_DEVICE_TABLE(acpi, mmc35240_acpi_match);
 
 static const struct i2c_device_id mmc35240_id[] = {
-	{"mmc35240", 0},
+	{"mmc35240", MMC35240 },
+	{"mmc328xms", MMC328XMS },
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, mmc35240_id);
