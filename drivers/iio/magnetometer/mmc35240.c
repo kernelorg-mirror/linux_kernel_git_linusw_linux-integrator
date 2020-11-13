@@ -18,6 +18,7 @@
 #include <linux/of_device.h>
 #include <linux/pm.h>
 #include <linux/regulator/consumer.h>
+#include <linux/gpio/consumer.h>
 
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
@@ -140,6 +141,7 @@ struct mmc35240_data {
 	struct mutex mutex;
 	struct regmap *regmap;
 	struct regulator_bulk_data regulators[2];
+	struct gpio_desc *reset;
 	enum mmc35240_resolution res;
 
 	/* OTP compensation */
@@ -631,6 +633,12 @@ static int mmc35240_probe(struct i2c_client *client,
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to get regulators\n");
 
+	/* This will take the device out of reset if need be */
+	data->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
+	if (IS_ERR(data->reset))
+		return dev_err_probe(dev, PTR_ERR(data->reset),
+				     "failed to get reset line\n");
+
 	ret = mmc35240_power_on(data);
 	if (ret)
 		return ret;
@@ -668,6 +676,9 @@ static int mmc35240_remove(struct i2c_client *client)
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct mmc35240_data *data = iio_priv(indio_dev);
 
+	/* Assert reset if we have a reset line */
+	if (data->reset)
+		gpiod_set_value_cansleep(data->reset, 1);
 	regulator_bulk_disable(ARRAY_SIZE(data->regulators),
 			       data->regulators);
 	return 0;
