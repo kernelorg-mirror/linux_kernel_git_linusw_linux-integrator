@@ -924,6 +924,9 @@ static void __init __create_mapping(struct mm_struct *mm, struct map_desc *md,
 
 	pgd = pgd_offset(mm, addr);
 	end = addr + length;
+	pr_info("map physical memory 0x%08llx-0x%08llx to virtual memory 0x%08lx-0x%08lx length: 0x%08lx\n",
+		(long long)phys, (long long)(phys + length - 1), addr, end - 1, length);
+
 	do {
 		unsigned long next = pgd_addr_end(addr, end);
 
@@ -1350,8 +1353,21 @@ static void __init devicemaps_init(const struct machine_desc *mdesc)
 	/*
 	 * Clear page table except top pmd used by early fixmaps
 	 */
-	for (addr = VMALLOC_START; addr < (FIXADDR_TOP & PMD_MASK); addr += PMD_SIZE)
+	for (addr = VMALLOC_START; addr < (FIXADDR_TOP & PMD_MASK); addr += PMD_SIZE) {
+		/*
+		 * When putting the kernel into the VMALLOC area, we need to
+		 * make sure we don't wipe out the VM mappings for the kernel.
+		 * This would pull out the ground under our feet. This gets
+		 * compiled out if we're not using kernel in VMALLOC.
+		 */
+		if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+			/* FIXME: assumes kernel ends on an even PMD */
+			if ((addr >= KERNEL_OFFSET) && (addr < (KERNEL_OFFSET + KERNEL_SIZE)))
+				continue;
+		}
+		pr_info("clear PMD at 0x%08x\n", addr);
 		pmd_clear(pmd_off_k(addr));
+	}
 
 	if (__atags_pointer) {
 		/* create a read-only mapping of the device tree */
@@ -1468,12 +1484,76 @@ static void __init map_lowmem(void)
 	for_each_mem_range(i, &start, &end) {
 		struct map_desc map;
 
+		pr_info("map lowmem start: 0x%08llx, end: 0x%08llx\n", (long long)start, (long long)end);
 		if (end > arm_lowmem_limit)
 			end = arm_lowmem_limit;
 		if (start >= end)
 			break;
 
-		if (end < kernel_x_start) {
+		if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+			/*
+			 * If our kernel image is in the VMALLOC area we need to remove the kernel
+			 * physical memory from lowmem since the kernel will be mapped separately.
+			 * The kernel will typically be at the very start of lowmem.
+			 *
+			 * If the memblock contains the kernel, we have to chisel out
+			 * the kernel memory from it and map each part separately. We get 6
+			 * different theoretical cases:
+			 *
+			 *                            +--------+ +--------+
+			 *  +-- start --+  +--------+ | Kernel | | Kernel |
+			 *  |           |  | Kernel | | case 2 | | case 5 |
+			 *  |           |  | case 1 | +--------+ |        | +--------+
+			 *  |  Memory   |  +--------+            |        | | Kernel |
+			 *  |  range    |  +--------+            |        | | case 6 |
+			 *  |           |  | Kernel | +--------+ |        | +--------+
+			 *  |           |  | case 3 | | Kernel | |        |
+			 *  +-- end ----+  +--------+ | case 4 | |        |
+			 *                            +--------+ +--------+
+			 */
+
+			/* Case 5: kernel covers range, don't map anything, should be rare */
+			if ((start > kernel_phy_start) && (end < kernel_phy_end))
+				break;
+
+			/* Cases where the kernel is starting inside the range */
+			if ((kernel_phy_start >= start) && (kernel_phy_start <= end)) {
+				/* Case 6: kernel is embedded in the range, we need two mappings */
+				if ((start < kernel_phy_start) && (end > kernel_phy_end)) {
+					/* Map memory below the kernel */
+					map.pfn = __phys_to_pfn(start);
+					map.virtual = __phys_to_virt(start);
+					map.length = kernel_phy_start - start;
+					map.type = MT_MEMORY_RWX; // FIXME: RW?
+					create_mapping(&map);
+					/* Map memory above the kernel */
+					map.pfn = __phys_to_pfn(kernel_phy_end);
+					map.virtual = __phys_to_virt(kernel_phy_end);
+					map.length = end - kernel_phy_end;
+					map.type = MT_MEMORY_RWX; // FIXME: RW?
+					create_mapping(&map);
+					break;
+				}
+				/* Case 1: kernel and range start at the same address, should be common */
+				if (kernel_phy_start == start)
+					start = kernel_phy_end;
+				/* Case 3: kernel and range end at the same address, should be rare */
+				if (kernel_phy_end == end)
+					end = kernel_phy_start;
+			} else if ((kernel_phy_start < start) && (kernel_phy_end > start) && (kernel_phy_end < end)) {
+				/* Case 2: kernel ends inside range, starts below it */
+				start = kernel_phy_end;
+			} else if ((kernel_phy_start > start) && (kernel_phy_start < end) && (kernel_phy_end > end)) {
+				/* Case 4: kernel starts inside range, ends above it */
+				end = kernel_phy_start;
+			}
+			map.pfn = __phys_to_pfn(start);
+			map.virtual = __phys_to_virt(start);
+			map.length = end - start;
+			map.type = MT_MEMORY_RWX; // FIXME: RW?
+			create_mapping(&map);
+			break;
+		} else if (end < kernel_x_start) {
 			map.pfn = __phys_to_pfn(start);
 			map.virtual = __phys_to_virt(start);
 			map.length = end - start;
@@ -1516,6 +1596,65 @@ static void __init map_lowmem(void)
 		}
 	}
 }
+
+#ifdef CONFIG_ARM_KERNEL_IN_VMALLOC
+/*
+ * FIXME: do we want to use the same method for all variants just without the
+ * vm reservation when not using kernel in vmalloc?
+ */
+void __init vm_reserve_kernel(struct map_desc *md)
+{
+	struct vm_struct *vm;
+	struct static_vm *svm;
+
+	svm = early_alloc(sizeof(*svm));
+
+	vm = &svm->vm;
+	vm->addr = (void *)(md->virtual & PAGE_MASK);
+	vm->size = PAGE_ALIGN(md->length + (md->virtual & ~PAGE_MASK));
+	vm->phys_addr = __pfn_to_phys(md->pfn);
+	vm->flags = VM_MAP | VM_ARM_STATIC_MAPPING;
+	vm->flags |= VM_ARM_MTYPE(md->type);
+	vm->caller = vm_reserve_kernel;
+	add_static_vm_early(svm);
+}
+
+static void __init map_kernel(void)
+{
+	phys_addr_t kernel_x_start = round_down(__pa(KERNEL_START), SECTION_SIZE);
+	phys_addr_t kernel_x_end = round_up(__pa(__init_end), SECTION_SIZE);
+	phys_addr_t kernel_nx_start = kernel_x_end;
+	phys_addr_t kernel_nx_end = round_up(__pa(KERNEL_END), SECTION_SIZE);
+	struct map_desc map;
+
+	map.pfn = __phys_to_pfn(kernel_x_start);
+	/* Relies on __phys_to_virt working for kernel addresses in VMALLOC */
+	map.virtual = __phys_to_virt(kernel_x_start);
+	map.length = kernel_x_end - kernel_x_start;
+	map.type = MT_MEMORY_RWX;
+	create_mapping(&map);
+	vm_reserve_kernel(&map);
+
+	/* If the nx part is small it may end up covered by the tail of the RWX section */
+	if (kernel_x_end == kernel_nx_end)
+		return;
+
+	map.pfn = __phys_to_pfn(kernel_nx_start);
+	/* Relies on __phys_to_virt working for kernel addresses in VMALLOC */
+	map.virtual = __phys_to_virt(kernel_nx_start);
+	map.length = kernel_nx_end - kernel_nx_start;
+	map.type = MT_MEMORY_RW;
+	create_mapping(&map);
+	vm_reserve_kernel(&map);
+}
+#else
+/*
+ * When not mapping the kernel in VMALLOC, the kernel is mapped while mapping lowmem.
+ */
+static void __init map_kernel(void)
+{
+}
+#endif /* CONFIG_ARM_KERNEL_IN_VMALLOC */
 
 #ifdef CONFIG_ARM_PV_FIXUP
 typedef void pgtables_remap(long long offset, unsigned long pgd);
@@ -1647,9 +1786,16 @@ void __init paging_init(const struct machine_desc *mdesc)
 {
 	void *zero_page;
 
+	pr_info("physical kernel memory: 0x%08x-0x%08x\n",
+		kernel_phy_start, kernel_phy_end);
+
 	prepare_page_table();
 	map_lowmem();
 	memblock_set_current_limit(arm_lowmem_limit);
+	pr_info("lowmem limit is %08llx\n", (long long)arm_lowmem_limit);
+	/* After this point early_alloc(), i.e. the memblock allocator, can be used */
+	map_kernel();
+	pr_info("mapped kernel\n");
 	dma_contiguous_remap();
 	early_fixmap_shutdown();
 	devicemaps_init(mdesc);
