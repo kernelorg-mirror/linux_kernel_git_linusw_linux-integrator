@@ -293,6 +293,28 @@ static void __init free_highpages(void)
 #endif
 }
 
+void __init mem_init_print_arm_info(void)
+{
+#define MLM(b, t) b, t, ((t) - (b)) >> 20
+	pr_notice("Virtual kernel memory layout:\n"
+		  "    fixmap  : 0x%08lx - 0x%08lx   (%4ld MB)\n"
+		  "    vmalloc : 0x%08lx - 0x%08lx   (%4ld MB)\n"
+		  "    lowmem  : 0x%08lx - 0x%08lx   (%4ld MB)\n"
+#ifdef CONFIG_MODULES
+		  "    modules : 0x%08lx - 0x%08lx   (%4ld MB)\n",
+#endif
+		  "     kernel : 0x%08lx - 0x%08lx   (%4ld MB)\n",
+		  MLM(FIXADDR_START, FIXADDR_END),
+		  MLM(VMALLOC_START, VMALLOC_END),
+		  MLM(PAGE_OFFSET, (unsigned long)high_memory),
+#ifdef CONFIG_MODULES
+		  MLM(MODULES_VADDR, MODULES_END),
+#endif
+		  /* From beginning of .text to end of .bss */
+		  MLM((unsigned long)_text, (unsigned long)__bss_stop));
+#undef MLM
+}
+
 /*
  * mem_init() marks the free areas in the mem_map and tells us how much
  * memory is free.  This is done after various parts of the system have
@@ -317,6 +339,7 @@ void __init mem_init(void)
 	free_highpages();
 
 	mem_init_print_info(NULL);
+	mem_init_print_arm_info();
 
 	/*
 	 * Check boundaries twice: Some fundamental inconsistencies can
