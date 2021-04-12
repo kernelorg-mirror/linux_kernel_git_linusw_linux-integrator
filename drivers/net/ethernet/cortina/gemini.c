@@ -1036,16 +1036,16 @@ static int geth_resize_freeq(struct gemini_ethernet_port *port)
 	struct gemini_ethernet *geth = port->geth;
 	struct net_device *netdev = port->netdev;
 	struct gemini_ethernet_port *other_port;
-	struct net_device *other_netdev;
+	struct net_device *other_netdev = NULL;
 	unsigned int new_size = 0;
 	unsigned int new_order;
 	unsigned long flags;
 	u32 en;
 	int ret;
 
-	if (netdev->dev_id == 0)
+	if (netdev->dev_id == 0 && geth->port1)
 		other_netdev = geth->port1->netdev;
-	else
+	else if (geth->port0)
 		other_netdev = geth->port0->netdev;
 
 	if (other_netdev && netif_running(other_netdev))
