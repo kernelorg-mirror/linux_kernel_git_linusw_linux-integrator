@@ -174,6 +174,13 @@ extern unsigned long vectors_base;
 #ifndef __ASSEMBLY__
 
 /*
+ * Physical start and end address of the kernel. These addresses are
+ * 2MB-aligned to match section mappings.
+ */
+extern phys_addr_t kernel_phy_start;
+extern phys_addr_t kernel_phy_end;
+
+/*
  * Physical vs virtual RAM address space conversion.  These are
  * private definitions which should NOT be used outside memory.h
  * files.  Use virt_to_phys/phys_to_virt/__pa/__va instead.
