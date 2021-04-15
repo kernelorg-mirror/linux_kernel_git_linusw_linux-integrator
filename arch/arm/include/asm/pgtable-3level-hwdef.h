@@ -75,7 +75,6 @@
 #define PHYS_MASK_SHIFT		(40)
 #define PHYS_MASK		((1ULL << PHYS_MASK_SHIFT) - 1)
 
-#ifndef CONFIG_CPU_TTBR0_PAN
 /*
  * TTBR0/TTBR1 split (PAGE_OFFSET):
  *   0x40000000: T0SZ = 2, T1SZ = 0 (not used)
@@ -85,23 +84,32 @@
  * Only use this feature if PHYS_OFFSET <= PAGE_OFFSET, otherwise
  * booting secondary CPUs would end up using TTBR1 for the identity
  * mapping set up in TTBR0.
+ *
+ * For TTBR0 PAN TTBR1 is only used during uaccess disabled regions when
+ * TTBR0 is disabled. Then TTBR1 points to swapper_pg_dir.
+ *
+ * For kernel-in-vmalloc the kernel is at KERNEL_OFFSET (0xf1000000)
+ * and we simply disable the use of split TTBR:s.
  */
-#if defined CONFIG_VMSPLIT_2G
+#if defined(CONFIG_CPU_TTBR0_PAN) || defined(CONFIG_ARM_KERNEL_IN_VMALLOC)
+#define TTBR1_OFFSET	0
+#elif defined CONFIG_VMSPLIT_2G /* PAGE_OFFSET = 0x80000000 */
 #define TTBR1_OFFSET	16			/* skip two L1 entries */
-#elif defined CONFIG_VMSPLIT_3G
+#elif defined CONFIG_VMSPLIT_3G /* PAGE_OFFSET = 0xc0000000 */
 #define TTBR1_OFFSET	(4096 * (1 + 3))	/* only L2, skip pgd + 3*pmd */
-#else
+#else /* PAGE_OFFSET = 0x40000000 or other */
 #define TTBR1_OFFSET	0
 #endif
 
-#define TTBR1_SIZE	(((PAGE_OFFSET >> 30) - 1) << 16)
+#if defined(CONFIG_CPU_TTBR0_PAN) || defined(CONFIG_ARM_KERNEL_IN_VMALLOC)
+#define TTBR1_SIZE	0 /* TTBR1 size controlled via TTBCR.T0SZ */
 #else
 /*
- * With CONFIG_CPU_TTBR0_PAN enabled, TTBR1 is only used during uaccess
- * disabled regions when TTBR0 is disabled.
+ * (0x40000000 >> 30) - 1 = 1 => TTBR1_SIZE = 2^(32-0) = 0x100000000
+ * (0x80000000 >> 30) - 1 = 2 => TTBR1_SIZE = 2^(32-1) =  0x80000000
+ * (0xc0000000 >> 30) - 1 = 3 => TTBR1_SIZE = 2^(32-2) =  0x40000000
  */
-#define TTBR1_OFFSET	0			/* pointing to swapper_pg_dir */
-#define TTBR1_SIZE	0			/* TTBR1 size controlled via TTBCR.T0SZ */
+#define TTBR1_SIZE	(((PAGE_OFFSET >> 30) - 1) << 16)
 #endif
 
 /*

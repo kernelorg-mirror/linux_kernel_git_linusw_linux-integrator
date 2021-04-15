@@ -284,6 +284,17 @@ config NEED_MACH_MEMORY_H
 	  definitions for this platform.  The need for mach/memory.h should
 	  be avoided when possible.
 
+config ARM_KERNEL_IN_VMALLOC
+	bool "Compile the kernel into the VMALLOC area"
+	depends on MMU
+	select KASAN_VMALLOC if KASAN
+	select ARM_MODULE_PLTS if MODULES
+	help
+	  This augments the build process so that the kernel TEXT, DATA
+	  and BSS will be put into the VMALLOC area. This avoids a dedicated
+	  mapping to userspace of the kernel for system calls and task
+	  switching.
+
 config PHYS_OFFSET
 	hex "Physical address of main memory" if MMU
 	depends on !ARM_PATCH_PHYS_VIRT || !AUTO_ZRELADDR

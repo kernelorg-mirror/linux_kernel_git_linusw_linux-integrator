@@ -183,8 +183,19 @@ void check_cpu_icache_size(int cpuid)
 
 void __init arm_memblock_init(const struct machine_desc *mdesc)
 {
-	/* Register the kernel text, kernel data and initrd with memblock. */
-	memblock_reserve(__pa(KERNEL_START), KERNEL_END - KERNEL_START);
+	/*
+	 * Register the kernel text, kernel data and initrd with memblock.
+	 *
+	 * When using kernel in vmalloc, we have to round up to the closest
+	 * section size, or the temporary section mapping of the tail of the
+	 * kernel will be overwritten by memblock allocations. This is not
+	 * a problem with the linear kernel map, since the allocations can
+	 * use the 1:1 map in that case.
+	 */
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+		memblock_reserve(__pa(KERNEL_START), KERNEL_END - KERNEL_START);
+	else
+		memblock_reserve(kernel_sec_start, KERNEL_SECTION_SIZE);
 
 	reserve_initrd_mem();
 
