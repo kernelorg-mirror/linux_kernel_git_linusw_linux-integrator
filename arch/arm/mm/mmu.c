@@ -922,6 +922,9 @@ static void __init __create_mapping(struct mm_struct *mm, struct map_desc *md,
 
 	pgd = pgd_offset(mm, addr);
 	end = addr + length;
+	pr_info("map physical memory 0x%08llx-0x%08llx to virtual memory 0x%08lx-0x%08lx length: 0x%08lx\n",
+		(long long)phys, (long long)(phys + length - 1), addr, end - 1, length);
+
 	do {
 		unsigned long next = pgd_addr_end(addr, end);
 
@@ -1348,8 +1351,21 @@ static void __init devicemaps_init(const struct machine_desc *mdesc)
 	/*
 	 * Clear page table except top pmd used by early fixmaps
 	 */
-	for (addr = VMALLOC_START; addr < (FIXADDR_TOP & PMD_MASK); addr += PMD_SIZE)
+	for (addr = VMALLOC_START; addr < (FIXADDR_TOP & PMD_MASK); addr += PMD_SIZE) {
+		/*
+		 * When putting the kernel into the VMALLOC area, we need to
+		 * make sure we don't wipe out the VM mappings for the kernel.
+		 * This would pull out the ground under our feet. This gets
+		 * compiled out if we're not using kernel in VMALLOC.
+		 */
+		if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+			if ((addr >= KERNEL_OFFSET) &&
+			    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
+				continue;
+		}
+		pr_info("clear PMD at 0x%08llx\n", (unsigned long long)addr);
 		pmd_clear(pmd_off_k(addr));
+	}
 
 	if (__atags_pointer) {
 		/* create a read-only mapping of the device tree */
@@ -1538,6 +1554,24 @@ static void __init map_lowmem(void)
 	}
 }
 
+/* Reserve memory used by the kernel when placing the kernel inside VMALLOC */
+void __init vm_reserve_kernel(struct map_desc *md)
+{
+	struct vm_struct *vm;
+	struct static_vm *svm;
+
+	svm = early_alloc(sizeof(*svm));
+
+	vm = &svm->vm;
+	vm->addr = (void *)(md->virtual & PAGE_MASK);
+	vm->size = PAGE_ALIGN(md->length + (md->virtual & ~PAGE_MASK));
+	vm->phys_addr = __pfn_to_phys(md->pfn);
+	vm->flags = VM_MAP | VM_ARM_STATIC_MAPPING;
+	vm->flags |= VM_ARM_MTYPE(md->type);
+	vm->caller = vm_reserve_kernel;
+	add_static_vm_early(svm);
+}
+
 static void __init map_kernel(void)
 {
 	/*
@@ -1572,6 +1606,8 @@ static void __init map_kernel(void)
 	map.length = kernel_x_end - kernel_x_start;
 	map.type = MT_MEMORY_RWX;
 	create_mapping(&map);
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+		vm_reserve_kernel(&map);
 
 	/* If the nx part is small it may end up covered by the tail of the RWX section */
 	if (kernel_x_end == kernel_nx_end)
@@ -1582,6 +1618,8 @@ static void __init map_kernel(void)
 	map.length = kernel_nx_end - kernel_nx_start;
 	map.type = MT_MEMORY_RW;
 	create_mapping(&map);
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+		vm_reserve_kernel(&map);
 }
 
 #ifdef CONFIG_ARM_PV_FIXUP
