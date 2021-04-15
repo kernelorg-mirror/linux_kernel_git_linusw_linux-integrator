@@ -320,13 +320,20 @@ void __init kasan_init(void)
 	}
 
 	/*
+	 * If we are not using kernel in the VMALLOC area MODULES_VADDR
+	 * and PKMAP may be in use. With a kernel in VMALLOC no modules are
+	 * loaded into the MODULES_VADDR area, nor are we using highmem
+	 * i.e. PKMAP is not used.
+	 *
 	 * 1. The module global variables are in MODULES_VADDR ~ MODULES_END,
 	 *    so we need to map this area.
 	 * 2. PKMAP_BASE ~ PKMAP_BASE+PMD_SIZE's shadow and MODULES_VADDR
 	 *    ~ MODULES_END's shadow is in the same PMD_SIZE, so we can't
 	 *    use kasan_populate_zero_shadow.
 	 */
-	create_mapping((void *)MODULES_VADDR, (void *)(PKMAP_BASE + PMD_SIZE));
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+		create_mapping((void *)MODULES_VADDR,
+			       (void *)(PKMAP_BASE + PMD_SIZE));
 
 	/*
 	 * KAsan may reuse the contents of kasan_early_shadow_pte directly, so
