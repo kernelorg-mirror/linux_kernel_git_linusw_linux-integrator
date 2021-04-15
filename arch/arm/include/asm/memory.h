@@ -32,7 +32,11 @@
  *   we may further offset this with TEXT_OFFSET in practice.
  */
 #define PAGE_OFFSET		UL(CONFIG_PAGE_OFFSET)
+#ifdef CONFIG_ARM_KERNEL_IN_VMALLOC
+#define KERNEL_OFFSET		(0xF1000000)
+#else
 #define KERNEL_OFFSET		(PAGE_OFFSET)
+#endif
 
 #ifdef CONFIG_MMU
 
@@ -63,7 +67,7 @@
 #define MODULES_VADDR		(PAGE_OFFSET - SZ_8M)
 #endif
 
-#if TASK_SIZE > MODULES_VADDR
+#if (TASK_SIZE > MODULES_VADDR) && !defined(CONFIG_ARM_KERNEL_IN_VMALLOC)
 #error Top of user space clashes with start of module space
 #endif
 
@@ -170,6 +174,9 @@ extern unsigned long vectors_base;
  */
 extern u64 kernel_sec_start;
 extern u64 kernel_sec_end;
+#define KERNEL_SECTION_SIZE (kernel_sec_end - kernel_sec_start)
+/* Page frame number for the first address of the kernel memory */
+#define KERNEL_PFN_OFFSET ((unsigned long)(kernel_sec_start >> PAGE_SHIFT))
 
 /*
  * Physical vs virtual RAM address space conversion.  These are
@@ -254,6 +261,16 @@ static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 {
 	phys_addr_t t;
 
+	/*
+	 * For kernel in vmalloc, move the address offset to
+	 * where it would have been, if we had a 1:1 mapping so
+	 * this virt-to-phys patching will work all the same.
+	 */
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC) &&
+	    (x >= KERNEL_OFFSET) &&
+	    (x < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
+		x = x - KERNEL_OFFSET + PAGE_OFFSET;
+
 	if (sizeof(phys_addr_t) == 4) {
 		__pv_stub(x, t, "add");
 	} else {
@@ -273,6 +290,17 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 	 * in place where 'r' 32 bit operand is expected.
 	 */
 	__pv_stub((unsigned long) x, t, "sub");
+
+	/*
+	 * For kernel in vmalloc, move the address offset from
+	 * where it would have been, if we had a 1:1 mapping so
+	 * this phys-to-virt patching will work all the same.
+	 */
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC) &&
+	    (x >= kernel_sec_start) &&
+	    (x < kernel_sec_end))
+		t = t - PAGE_OFFSET + KERNEL_OFFSET;
+
 	return t;
 }
 
@@ -283,22 +311,58 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 
 static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 {
-	return (phys_addr_t)x - PAGE_OFFSET + PHYS_OFFSET;
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+		return (phys_addr_t)x - PAGE_OFFSET + PHYS_OFFSET;
+	} else {
+		phys_addr_t addr = (phys_addr_t)x;
+
+		if ((addr >= KERNEL_OFFSET) &&
+		    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
+			return addr - KERNEL_OFFSET + kernel_sec_start;
+		else
+			return addr - PAGE_OFFSET + PHYS_OFFSET;
+	}
 }
 
 static inline unsigned long __phys_to_virt(phys_addr_t x)
 {
-	return x - PHYS_OFFSET + PAGE_OFFSET;
+	/* Normally just use the 1-to-1 mapping */
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+		return x - PHYS_OFFSET + PAGE_OFFSET;
+	} else {
+		/*
+		 * We need very specific handling of the kernel physical memory
+		 * 1-to-1 map: memory allocations for the kernel will be made
+		 * above (e.g. page table) and above (any other allocations)
+		 * in the physical memory.
+		 */
+		if (x >= kernel_sec_start && x < kernel_sec_end)
+			return x - kernel_sec_start + KERNEL_OFFSET;
+		else
+			return x - PHYS_OFFSET + PAGE_OFFSET;
+	}
 }
-
 #endif
 
 static inline unsigned long virt_to_pfn(const void *p)
 {
 	unsigned long kaddr = (unsigned long)p;
-	return (((kaddr - PAGE_OFFSET) >> PAGE_SHIFT) +
-		PHYS_PFN_OFFSET);
+
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+		return (((kaddr - PAGE_OFFSET) >> PAGE_SHIFT) +
+			PHYS_PFN_OFFSET);
+	} else {
+		if ((kaddr >= KERNEL_OFFSET) &&
+		    (kaddr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE))) {
+			return (((kaddr - KERNEL_OFFSET) >> PAGE_SHIFT) +
+				KERNEL_PFN_OFFSET);
+		} else {
+			return (((kaddr - PAGE_OFFSET) >> PAGE_SHIFT) +
+				PHYS_PFN_OFFSET);
+		}
+	}
 }
+
 #define __pa_symbol_nodebug(x)	__virt_to_phys_nodebug((x))
 
 #ifdef CONFIG_DEBUG_VIRTUAL
