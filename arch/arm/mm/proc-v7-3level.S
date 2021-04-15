@@ -115,7 +115,7 @@ ENDPROC(cpu_v7_set_pte_ext)
 	 * - \ttbr1 updated.
 	 */
 	.macro	v7_ttb_setup, zero, ttbr0l, ttbr0h, ttbr1, tmp
-	ldr	\tmp, =swapper_pg_dir		@ swapper_pg_dir virtual address
+	ldr	\tmp, =KERNEL_OFFSET		@ swapper_pg_dir virtual address
 	cmp	\ttbr1, \tmp, lsr #12		@ PHYS_OFFSET > PAGE_OFFSET?
 	mov	\tmp, #TTB_EAE			@ for TTB control egister
 	ALT_SMP(orr	\tmp, \tmp, #TTB_FLAGS_SMP)
