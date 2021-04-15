@@ -36,18 +36,26 @@
 #ifdef CONFIG_MMU
 void *module_alloc(unsigned long size)
 {
-	gfp_t gfp_mask = GFP_KERNEL;
-	void *p;
+	/*
+	 * If we're compiling the kernel into the VMALLOC area, then make
+	 * sure to only use that area for any kernel modules as well. Else
+	 * the special MODULES_VADDR address takes precedence.
+	 */
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
+		gfp_t gfp_mask = GFP_KERNEL;
+		void *p;
 
-	/* Silence the initial allocation */
-	if (IS_ENABLED(CONFIG_ARM_MODULE_PLTS))
-		gfp_mask |= __GFP_NOWARN;
+		/* Silence the initial allocation */
+		if (IS_ENABLED(CONFIG_ARM_MODULE_PLTS))
+			gfp_mask |= __GFP_NOWARN;
 
-	p = __vmalloc_node_range(size, 1, MODULES_VADDR, MODULES_END,
-				gfp_mask, PAGE_KERNEL_EXEC, 0, NUMA_NO_NODE,
-				__builtin_return_address(0));
-	if (!IS_ENABLED(CONFIG_ARM_MODULE_PLTS) || p)
-		return p;
+		p = __vmalloc_node_range(size, 1, MODULES_VADDR, MODULES_END,
+					 gfp_mask, PAGE_KERNEL_EXEC, 0,
+					 NUMA_NO_NODE,
+					 __builtin_return_address(0));
+		if (!IS_ENABLED(CONFIG_ARM_MODULE_PLTS) || p)
+			return p;
+	}
 	return __vmalloc_node_range(size, 1,  VMALLOC_START, VMALLOC_END,
 				GFP_KERNEL, PAGE_KERNEL_EXEC, 0, NUMA_NO_NODE,
 				__builtin_return_address(0));
