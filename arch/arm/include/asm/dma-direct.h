@@ -28,7 +28,7 @@ static inline unsigned long dma_to_pfn(struct device *dev, dma_addr_t addr)
 static inline dma_addr_t virt_to_dma(struct device *dev, void *addr)
 {
 	if (dev)
-		return pfn_to_dma(dev, virt_to_pfn(addr));
+		return pfn_to_dma(dev, virt_to_pfn((unsigned long)addr));
 
 	return (dma_addr_t)__virt_to_bus((unsigned long)(addr));
 }
