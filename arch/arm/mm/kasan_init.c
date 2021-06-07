@@ -58,7 +58,7 @@ static void __init kasan_pte_populate(pmd_t *pmdp, unsigned long addr,
 				return;
 			}
 			memset(p, KASAN_SHADOW_INIT, PAGE_SIZE);
-			entry = pfn_pte(virt_to_pfn(p),
+			entry = pfn_pte(virt_to_pfn((unsigned long)p),
 					__pgprot(pgprot_val(PAGE_KERNEL)));
 		} else if (pte_none(READ_ONCE(*ptep))) {
 			/*
@@ -68,7 +68,7 @@ static void __init kasan_pte_populate(pmd_t *pmdp, unsigned long addr,
 			 * will work on a scratch area until we can set up the
 			 * proper KASan shadow memory.
 			 */
-			entry = pfn_pte(virt_to_pfn(kasan_early_shadow_page),
+			entry = pfn_pte(virt_to_pfn((unsigned long)kasan_early_shadow_page),
 					__pgprot(_L_PTE_DEFAULT | L_PTE_DIRTY | L_PTE_XN));
 		} else {
 			/*
@@ -278,7 +278,7 @@ void __init kasan_init(void)
 	for (i = 0; i < PTRS_PER_PTE; i++)
 		set_pte_at(&init_mm, KASAN_SHADOW_START + i*PAGE_SIZE,
 			   &kasan_early_shadow_pte[i],
-			   pfn_pte(virt_to_pfn(kasan_early_shadow_page),
+			   pfn_pte(virt_to_pfn((unsigned long)kasan_early_shadow_page),
 				__pgprot(pgprot_val(PAGE_KERNEL)
 					 | L_PTE_RDONLY)));
 

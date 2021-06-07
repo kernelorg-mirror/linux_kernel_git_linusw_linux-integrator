@@ -25,8 +25,8 @@
 
 int pfn_is_nosave(unsigned long pfn)
 {
-	unsigned long nosave_begin_pfn = virt_to_pfn(&__nosave_begin);
-	unsigned long nosave_end_pfn = virt_to_pfn(&__nosave_end - 1);
+	unsigned long nosave_begin_pfn = virt_to_pfn((unsigned long)&__nosave_begin);
+	unsigned long nosave_end_pfn = virt_to_pfn((unsigned long)(&__nosave_end - 1));
 
 	return (pfn >= nosave_begin_pfn) && (pfn <= nosave_end_pfn);
 }
