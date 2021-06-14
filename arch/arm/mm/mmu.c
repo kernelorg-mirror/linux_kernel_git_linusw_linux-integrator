@@ -922,8 +922,8 @@ static void __init __create_mapping(struct mm_struct *mm, struct map_desc *md,
 
 	pgd = pgd_offset(mm, addr);
 	end = addr + length;
-	pr_info("map physical memory 0x%08llx-0x%08llx to virtual memory 0x%08lx-0x%08lx length: 0x%08lx\n",
-		(long long)phys, (long long)(phys + length - 1), addr, end - 1, length);
+	pr_info("map physical memory 0x%08llx-0x%08llx to virtual memory 0x%08lx-0x%08lx length: 0x%08lx type: %08x\n",
+		(long long)phys, (long long)(phys + length - 1), addr, end - 1, length, md->type);
 
 	do {
 		unsigned long next = pgd_addr_end(addr, end);
@@ -1752,7 +1752,7 @@ void __init paging_init(const struct machine_desc *mdesc)
 {
 	void *zero_page;
 
-	pr_debug("physical kernel sections: 0x%08x-0x%08x\n",
+	pr_info("physical kernel sections: 0x%08x-0x%08x\n",
 		 kernel_sec_start, kernel_sec_end);
 
 	prepare_page_table();
