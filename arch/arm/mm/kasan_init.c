@@ -234,32 +234,84 @@ void __init kasan_init(void)
 	cpu_switch_mm(tmp_pgd_table, &init_mm);
 	local_flush_tlb_all();
 
+	pr_info("clearing PGDs from %08x-%08x\n", KASAN_SHADOW_START, KASAN_SHADOW_END);
 	clear_pgds(KASAN_SHADOW_START, KASAN_SHADOW_END);
 
 	kasan_populate_early_shadow(kasan_mem_to_shadow((void *)VMALLOC_START),
 				    kasan_mem_to_shadow((void *)-1UL) + 1);
 
 	for_each_mem_range(i, &pa_start, &pa_end) {
-		void *start = __va(pa_start);
-		void *end = __va(pa_end);
+		/*
+		 * We move over the memory ranges, but we cannot assume that each memory range is
+		 * continuously mapped 1-to-1 from physical to virtual memory, so walk over the
+		 * pages and indentify contiguous ranges.
+		 */
+		phys_addr_t start_iter = pa_start;
+		phys_addr_t end_iter = pa_start;
+		phys_addr_t next_start = pa_start;
+		bool mapped_all = false;
+
+		pr_info("KASAN shadow memory at %pa-%pa\n", &pa_start, &pa_end);
 
 		/* Do not attempt to shadow highmem */
-		if (pa_start >= arm_lowmem_limit) {
+		if (start_iter >= arm_lowmem_limit) {
 			pr_info("Skip highmem block at %pa-%pa\n", &pa_start, &pa_end);
 			continue;
 		}
-		if (pa_end > arm_lowmem_limit) {
-			pr_info("Truncating shadow for memory block at %pa-%pa to lowmem region at %pa\n",
-				&pa_start, &pa_end, &arm_lowmem_limit);
-			end = __va(arm_lowmem_limit);
-		}
-		if (start >= end) {
-			pr_info("Skipping invalid memory block %pa-%pa (virtual %p-%p)\n",
-				&pa_start, &pa_end, start, end);
-			continue;
-		}
 
-		create_mapping(start, end);
+		while (!mapped_all) {
+			void *start;
+			void *end;
+
+			end = __va(start_iter);
+
+			/* Walk pages while we are contiguous */
+			while (true) {
+				void *next_end;
+
+				/* We reached the last page of the physical memory range */
+				if (end == __va(pa_end)) {
+					mapped_all = true;
+					break;
+				}
+
+				end += PAGE_SIZE;
+				end_iter += PAGE_SIZE;
+				next_end = __va(end_iter);
+
+				if (next_end == end) {
+					/* We are contiguous */
+					continue;
+				} else {
+					next_start = end_iter;
+					break;
+				}
+			}
+			pr_info("shadowing physical memory %08x-%08x\n", start_iter, end_iter);
+			start = __va(start_iter);
+
+			if (end_iter > arm_lowmem_limit) {
+				pr_info("Truncating shadow for memory block at %pa-%pa to lowmem region at %pa\n",
+					&start_iter, &end_iter, &arm_lowmem_limit);
+				end = __va(arm_lowmem_limit);
+			}
+
+			/* Sanity check */
+			if (start >= end) {
+				pr_info("Skipping invalid memory block %pa-%pa (virtual %08x-%08x)\n",
+					&start_iter, &end_iter, (u32)start, (u32)end);
+				start_iter = next_start;
+				continue;
+			}
+
+			/*
+			 * Advance this for next iteration, start_iter now points to the beginning of the
+			 * next contiguous subrange.
+			 */
+			start_iter = next_start;
+
+			create_mapping(start, end);
+		}
 	}
 
 	/*
@@ -269,6 +321,7 @@ void __init kasan_init(void)
 	 *    ~ MODULES_END's shadow is in the same PMD_SIZE, so we can't
 	 *    use kasan_populate_zero_shadow.
 	 */
+	pr_info("mapping modules\n");
 	create_mapping((void *)MODULES_VADDR, (void *)(PKMAP_BASE + PMD_SIZE));
 
 	/*
@@ -282,6 +335,7 @@ void __init kasan_init(void)
 				__pgprot(pgprot_val(PAGE_KERNEL)
 					 | L_PTE_RDONLY)));
 
+	pr_info("switch mm context\n");
 	cpu_switch_mm(swapper_pg_dir, &init_mm);
 	local_flush_tlb_all();
 
