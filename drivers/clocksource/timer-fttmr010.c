@@ -119,19 +119,9 @@ static inline struct fttmr010 *to_fttmr010(struct clock_event_device *evt)
 	return container_of(evt, struct fttmr010, clkevt);
 }
 
-static unsigned long fttmr010_read_current_timer_up(void)
-{
-	return readl(local_fttmr->base + TIMER2_COUNT);
-}
-
 static unsigned long fttmr010_read_current_timer_down(void)
 {
 	return ~readl(local_fttmr->base + TIMER2_COUNT);
-}
-
-static u64 notrace fttmr010_read_sched_clock_up(void)
-{
-	return fttmr010_read_current_timer_up();
 }
 
 static u64 notrace fttmr010_read_sched_clock_down(void)
@@ -148,17 +138,7 @@ static int fttmr010_timer_set_next_event(unsigned long cycles,
 	/* Stop */
 	fttmr010->timer_shutdown(evt);
 
-	if (fttmr010->is_aspeed) {
-		/*
-		 * ASPEED Timer Controller will load TIMER1_LOAD register
-		 * into TIMER1_COUNT register when the timer is re-enabled.
-		 */
-		writel(cycles, fttmr010->base + TIMER1_LOAD);
-	} else {
-		/* Setup the match register forward in time */
-		cr = readl(fttmr010->base + TIMER1_COUNT);
-		writel(cr + cycles, fttmr010->base + TIMER1_MATCH1);
-	}
+	writel(cycles, fttmr010->base + TIMER1_LOAD);
 
 	/* Start */
 	cr = readl(fttmr010->base + TIMER_CR);
@@ -194,24 +174,11 @@ static int fttmr010_timer_shutdown(struct clock_event_device *evt)
 static int fttmr010_timer_set_oneshot(struct clock_event_device *evt)
 {
 	struct fttmr010 *fttmr010 = to_fttmr010(evt);
-	u32 cr;
 
 	/* Stop */
 	fttmr010->timer_shutdown(evt);
-
-	/* Setup counter start from 0 or ~0 */
 	writel(0, fttmr010->base + TIMER1_COUNT);
-	if (fttmr010->is_aspeed) {
-		writel(~0, fttmr010->base + TIMER1_LOAD);
-	} else {
-		writel(0, fttmr010->base + TIMER1_LOAD);
-
-		/* Enable interrupt */
-		cr = readl(fttmr010->base + TIMER_INTR_MASK);
-		cr &= ~(TIMER_1_INT_OVERFLOW | TIMER_1_INT_MATCH2);
-		cr |= TIMER_1_INT_MATCH1;
-		writel(cr, fttmr010->base + TIMER_INTR_MASK);
-	}
+	writel(~0, fttmr010->base + TIMER1_LOAD);
 
 	return 0;
 }
@@ -226,19 +193,7 @@ static int fttmr010_timer_set_periodic(struct clock_event_device *evt)
 	fttmr010->timer_shutdown(evt);
 
 	/* Setup timer to fire at 1/HZ intervals. */
-	if (fttmr010->is_aspeed) {
-		writel(period, fttmr010->base + TIMER1_LOAD);
-	} else {
-		cr = 0xffffffff - (period - 1);
-		writel(cr, fttmr010->base + TIMER1_COUNT);
-		writel(cr, fttmr010->base + TIMER1_LOAD);
-
-		/* Enable interrupt on overflow */
-		cr = readl(fttmr010->base + TIMER_INTR_MASK);
-		cr &= ~(TIMER_1_INT_MATCH1 | TIMER_1_INT_MATCH2);
-		cr |= TIMER_1_INT_OVERFLOW;
-		writel(cr, fttmr010->base + TIMER_INTR_MASK);
-	}
+	writel(period, fttmr010->base + TIMER1_LOAD);
 
 	/* Start the timer */
 	cr = readl(fttmr010->base + TIMER_CR);
@@ -268,7 +223,7 @@ static irqreturn_t fttmr010_timer_interrupt(int irq, void *dev_id)
 	}
 
 	val = readl(fttmr010->base + TIMER_INTR_STATE);
-	if (val & (TIMER_1_INT_MATCH1 | TIMER_1_INT_OVERFLOW))
+	if (val & TIMER_1_INT_MATCH1)
 		evt->event_handler(evt);
 	else
 		/* Spurious IRQ */
@@ -284,9 +239,8 @@ static irqreturn_t ast2600_timer_interrupt(int irq, void *dev_id)
 	u32 val;
 
 	val = readl(fttmr010->base + TIMER_INTR_STATE);
-	if (val & (TIMER_1_INT_MATCH1 | TIMER_1_INT_OVERFLOW)) {
-		writel(TIMER_1_INT_MATCH1 | TIMER_1_INT_OVERFLOW,
-		       fttmr010->base + TIMER_INTR_STATE);
+	if (val & TIMER_1_INT_MATCH1) {
+		writel(TIMER_1_INT_MATCH1, fttmr010->base + TIMER_INTR_STATE);
 		evt->event_handler(evt);
 	} else {
 		/* Just clear any spurious IRQs from the block */
@@ -360,15 +314,10 @@ static int __init fttmr010_common_init(struct device_node *np,
 		writel(0, fttmr010->base + TIMER_INTR_STATE);
 	}
 
-	/*
-	 * Enable timer 1 count up, timer 2 count up, except on Aspeed,
-	 * where everything just counts down.
-	 */
 	if (is_aspeed)
 		val = TIMER_2_CR_ASPEED_ENABLE;
 	else {
-		val = TIMER_2_CR_ENABLE | TIMER_1_CR_UPDOWN |
-			TIMER_2_CR_UPDOWN;
+		val = TIMER_2_CR_ENABLE;
 	}
 	writel(val, fttmr010->base + TIMER_CR);
 
@@ -381,23 +330,13 @@ static int __init fttmr010_common_init(struct device_node *np,
 	writel(0, fttmr010->base + TIMER2_MATCH1);
 	writel(0, fttmr010->base + TIMER2_MATCH2);
 
-	if (fttmr010->is_aspeed) {
-		writel(~0, fttmr010->base + TIMER2_LOAD);
-		clocksource_mmio_init(fttmr010->base + TIMER2_COUNT,
-				      "FTTMR010-TIMER2",
-				      fttmr010->tick_rate,
-				      300, 32, clocksource_mmio_readl_down);
-		sched_clock_register(fttmr010_read_sched_clock_down, 32,
-				     fttmr010->tick_rate);
-	} else {
-		writel(0, fttmr010->base + TIMER2_LOAD);
-		clocksource_mmio_init(fttmr010->base + TIMER2_COUNT,
-				      "FTTMR010-TIMER2",
-				      fttmr010->tick_rate,
-				      300, 32, clocksource_mmio_readl_up);
-		sched_clock_register(fttmr010_read_sched_clock_up, 32,
-				     fttmr010->tick_rate);
-	}
+	writel(~0, fttmr010->base + TIMER2_LOAD);
+	clocksource_mmio_init(fttmr010->base + TIMER2_COUNT,
+			      "FTTMR010-TIMER2",
+			      fttmr010->tick_rate,
+			      300, 32, clocksource_mmio_readl_down);
+	sched_clock_register(fttmr010_read_sched_clock_down, 32,
+			     fttmr010->tick_rate);
 
 	/*
 	 * Setup clockevent timer (interrupt-driven) on timer 1.
@@ -441,12 +380,8 @@ static int __init fttmr010_common_init(struct device_node *np,
 
 #ifdef CONFIG_ARM
 	/* Also use this timer for delays */
-	if (fttmr010->is_aspeed)
-		fttmr010->delay_timer.read_current_timer =
-			fttmr010_read_current_timer_down;
-	else
-		fttmr010->delay_timer.read_current_timer =
-			fttmr010_read_current_timer_up;
+	fttmr010->delay_timer.read_current_timer =
+		fttmr010_read_current_timer_down;
 	fttmr010->delay_timer.freq = fttmr010->tick_rate;
 	register_current_timer_delay(&fttmr010->delay_timer);
 #endif
