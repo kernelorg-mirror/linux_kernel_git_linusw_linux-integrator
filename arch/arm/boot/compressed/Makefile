@@ -6,6 +6,7 @@
 #
 
 OBJS		=
+AFLAGS_head.o += -DDEBUG
 
 HEAD	= head.o
 OBJS	+= misc.o decompress.o
