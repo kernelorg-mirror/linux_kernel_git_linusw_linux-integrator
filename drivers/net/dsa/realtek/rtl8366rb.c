@@ -170,6 +170,26 @@
  */
 #define RTL8366RB_VLAN_INGRESS_CTRL2_REG	0x037f
 
+/* Storm registers are for flood control
+ *
+ * 02e2 and 02e3 are defined in the header for the RTL8366RB API
+ * but there are no usage examples. The implementation only activates
+ * the filter per port in the CTRL registers.
+ */
+#define RTL8366RB_STORM_FILTERING_1_REG		0x02e2
+#define RTL8366RB_STORM_FILTERING_PERIOD_BIT	BIT(0)
+#define RTL8366RB_STORM_FILTERING_PERIOD_MSK	GENMASK(1, 0)
+#define RTL8366RB_STORM_FILTERING_COUNT_BIT	BIT(1)
+#define RTL8366RB_STORM_FILTERING_COUNT_MSK	GENMASK(3, 2)
+#define RTL8366RB_STORM_FILTERING_BC_BIT	BIT(5)
+#define RTL8366RB_STORM_FILTERING_2_REG		0x02e3
+#define RTL8366RB_STORM_FILTERING_MC_BIT	BIT(0)
+#define RTL8366RB_STORM_FILTERING_UNDA_BIT	BIT(5)
+#define RTL8366RB_STORM_BC_CTRL			0x03e0
+#define RTL8366RB_STORM_MC_CTRL			0x03e1
+#define RTL8366RB_STORM_UNDA_CTRL		0x03e2
+#define RTL8366RB_STORM_UNMC_CTRL		0x03e3
+
 /* LED control registers */
 #define RTL8366RB_LED_BLINKRATE_REG		0x0430
 #define RTL8366RB_LED_BLINKRATE_MASK		0x0007
@@ -1353,8 +1373,8 @@ rtl8366rb_port_pre_bridge_flags(struct dsa_switch *ds, int port,
 				struct switchdev_brport_flags flags,
 				struct netlink_ext_ack *extack)
 {
-	/* We support enabling/disabling learning */
-	if (flags.mask & ~(BR_LEARNING))
+	if (flags.mask & ~(BR_LEARNING | BR_BCAST_FLOOD |
+			   BR_MCAST_FLOOD | BR_FLOOD))
 		return -EINVAL;
 
 	return 0;
@@ -1372,6 +1392,37 @@ rtl8366rb_port_bridge_flags(struct dsa_switch *ds, int port,
 		ret = regmap_update_bits(priv->map, RTL8366RB_PORT_LEARNDIS_CTRL,
 					 BIT(port),
 					 (flags.val & BR_LEARNING) ? 0 : BIT(port));
+		if (ret)
+			return ret;
+	}
+
+	if (flags.mask & BR_BCAST_FLOOD) {
+		ret = regmap_update_bits(priv->map, RTL8366RB_STORM_BC_CTRL,
+					 BIT(port),
+					 (flags.val & BR_BCAST_FLOOD) ? BIT(port) : 0);
+		if (ret)
+			return ret;
+	}
+
+	if (flags.mask & BR_MCAST_FLOOD) {
+		ret = regmap_update_bits(priv->map, RTL8366RB_STORM_MC_CTRL,
+					 BIT(port),
+					 (flags.val & BR_MCAST_FLOOD) ? BIT(port) : 0);
+		if (ret)
+			return ret;
+		/* UNMC = Unknown multicast address */
+		ret = regmap_update_bits(priv->map, RTL8366RB_STORM_UNMC_CTRL,
+					 BIT(port),
+					 (flags.val & BR_FLOOD) ? BIT(port) : 0);
+		if (ret)
+			return ret;
+	}
+
+	if (flags.mask & BR_FLOOD) {
+		/* UNDA = Unknown destination address */
+		ret = regmap_update_bits(priv->map, RTL8366RB_STORM_UNDA_CTRL,
+					 BIT(port),
+					 (flags.val & BR_FLOOD) ? BIT(port) : 0);
 		if (ret)
 			return ret;
 	}
