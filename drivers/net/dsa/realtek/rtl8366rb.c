@@ -37,6 +37,7 @@
 #define RTL8366RB_SGCR_MAX_LENGTH_1536		RTL8366RB_SGCR_MAX_LENGTH(0x1)
 #define RTL8366RB_SGCR_MAX_LENGTH_1552		RTL8366RB_SGCR_MAX_LENGTH(0x2)
 #define RTL8366RB_SGCR_MAX_LENGTH_16000		RTL8366RB_SGCR_MAX_LENGTH(0x3)
+#define RTL8366RB_CAM_TBL_OFF			BIT(6)
 #define RTL8366RB_SGCR_EN_VLAN			BIT(13)
 #define RTL8366RB_SGCR_EN_VLAN_4KTB		BIT(14)
 
@@ -129,6 +130,22 @@
 #define RTL8366RB_RESET_CTRL_REG		0x0100
 #define RTL8366RB_CHIP_CTRL_RESET_HW		BIT(0)
 #define RTL8366RB_CHIP_CTRL_RESET_SW		BIT(1)
+
+/* LUT/FDB read/write registers */
+#define RTL8366RB_TABLE_ACCESS_CTRL_REG		0x0180
+#define RTL8366RB_TABLE_WRITE_BASE		0x0182
+#define RTL8366RB_VLAN_TABLE_WRITE_BASE		0x0185
+#define RTL8366RB_TABLE_READ_BASE		0x0189
+#define RTL8366RB_VLAN_TABLE_READ_BASE		0x018C
+
+#define RTL8366RB_L2TB_ENTRIES			4
+#define RTL8366RB_CAM_ENTRIES			8
+#define RTL8366RB_L2TB_WRITE_CTRL		0x0101
+#define RTL8366RB_L2TB_READ_CTRL		0x0001
+#define RTL8366RB_CAMTB_WRITE_CTRL		0x0301
+#define RTL8366RB_CAMTB_READ_CTRL		0x0201
+#define RTL8366RB_VLAN_READ_CTRL		0x0E01
+#define RTL8366RB_VLAN_WRITE_CTRL		0x0F01
 
 #define RTL8366RB_CHIP_ID_REG			0x0509
 #define RTL8366RB_CHIP_ID_8366			0x5937
@@ -238,13 +255,6 @@
 		(RTL8366RB_PORT_VLAN_CTRL_BASE + (_p) / 4)
 #define RTL8366RB_PORT_VLAN_CTRL_MASK		0xf
 #define RTL8366RB_PORT_VLAN_CTRL_SHIFT(_p)	(4 * ((_p) % 4))
-
-#define RTL8366RB_VLAN_TABLE_READ_BASE		0x018C
-#define RTL8366RB_VLAN_TABLE_WRITE_BASE		0x0185
-
-#define RTL8366RB_TABLE_ACCESS_CTRL_REG		0x0180
-#define RTL8366RB_TABLE_VLAN_READ_CTRL		0x0E01
-#define RTL8366RB_TABLE_VLAN_WRITE_CTRL		0x0F01
 
 #define RTL8366RB_VLAN_MC_BASE(_x)		(0x0020 + (_x) * 3)
 
@@ -969,6 +979,13 @@ static int rtl8366rb_setup(struct dsa_switch *ds)
 	if (ret)
 		return ret;
 
+	/* Make sure we enable CAM (content-adressable memory) FDB */
+	ret = regmap_update_bits(priv->map, RTL8366RB_SGCR,
+				 RTL8366RB_CAM_TBL_OFF,
+				 0);
+	if (ret)
+		return ret;
+
 	/* Port 4 setup: this enables Port 4, usually the WAN port,
 	 * common PHY IO mode is apparently mode 0, and this is not what
 	 * the port is initialized to. There is no explanation of the
@@ -1527,6 +1544,305 @@ static int rtl8366rb_max_mtu(struct dsa_switch *ds, int port)
 	return 15996;
 }
 
+static void rtl8366_ethad_swizzle(u8 *addr)
+{
+	/* The FDB has all MAC addresses in reverse byte order, so swizzle */
+	u8 t0, t1, t2;
+
+	t0 = addr[0];
+	t1 = addr[1];
+	t2 = addr[2];
+	addr[0] = addr[5];
+	addr[1] = addr[4];
+	addr[2] = addr[3];
+	addr[3] = t2;
+	addr[4] = t1;
+	addr[5] = t0;
+}
+
+static int rtl8366rb_get_cam_entry(struct realtek_priv *priv, int entry, u8 *addr,
+				   u16 *fid, bool *is_static)
+{
+	u16 camentry[6];
+	u8 *mac;
+	u32 val;
+	int ret;
+	int i;
+
+	val = (entry << 3) | RTL8366RB_CAMTB_READ_CTRL;
+	ret = regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG, val);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < ARRAY_SIZE(camentry); i++) {
+		ret = regmap_read(priv->map, RTL8366RB_TABLE_READ_BASE + i, &val);
+		if (ret)
+			return ret;
+		camentry[i] = (u16)val;
+	}
+
+	/* 6 bytes of MAC, 2 bits FID, flag if static/autolearned entry */
+	mac = (u8 *)&camentry[0];
+	rtl8366_ethad_swizzle(mac);
+	ether_addr_copy(addr, mac);
+	*fid = (camentry[3] >> 13) & RTL8366RB_VLAN_FID_MASK;
+	*is_static = !!(camentry[4] & BIT(1));
+
+	return 0;
+}
+
+static int rtl8366rb_get_l2_lut_entry(struct realtek_priv *priv, int entry, u8 *addr,
+				      u16 *fid, bool *is_multicast, bool *is_static)
+{
+	u16 l2entry[6];
+	u8 *mac;
+	u32 val;
+	int ret;
+	int i;
+
+	val = (entry << 3) | RTL8366RB_L2TB_READ_CTRL;
+	ret = regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG, val);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < ARRAY_SIZE(l2entry); i++) {
+		ret = regmap_read(priv->map, RTL8366RB_TABLE_READ_BASE + i, &val);
+		if (ret)
+			return ret;
+		l2entry[i] = (u16)val;
+	}
+
+	/* 6 bytes of MAC, 2 bits FID, flag if static/autolearned entry */
+	mac = (u8 *)&l2entry[0];
+	rtl8366_ethad_swizzle(mac);
+	ether_addr_copy(addr, mac);
+	rtl8366_ethad_swizzle(addr);
+	*fid = (l2entry[3] >> 13) & RTL8366RB_VLAN_FID_MASK;
+	*is_multicast = !!(l2entry[4] & BIT(0));
+	if (!*is_multicast)
+		*is_static = !!(l2entry[4] & BIT(1));
+
+	return 0;
+}
+
+static int rtl8366rb_port_fdb_dump(struct dsa_switch *ds, int port, dsa_fdb_dump_cb_t *cb,
+				   void *data)
+{
+	struct realtek_priv *priv = ds->priv;
+	int ret;
+	int i;
+
+	/* Read out and dump all CAM (content-addressable memory) entries */
+	for (i = 0; i < RTL8366RB_CAM_ENTRIES; i++) {
+		u8 addr[ETH_ALEN];
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_cam_entry(priv, i, addr, &fid, &is_static);
+		if (ret)
+			return ret;
+
+		if (!is_valid_ether_addr(addr))
+			continue;
+
+		ret = cb(addr, fid, is_static, data);
+		if (ret)
+			return ret;
+	}
+
+	/* Read out and dump all L2 LUT entries */
+	for (i = 0; i < RTL8366RB_L2TB_ENTRIES; i++) {
+		u8 addr[ETH_ALEN];
+		bool is_multicast;
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_l2_lut_entry(priv, i, addr, &fid, &is_multicast, &is_static);
+		if (ret)
+			return ret;
+
+		if (!is_valid_ether_addr(addr))
+			continue;
+
+		if (is_multicast) {
+			/* Multicast entry, this is IP based so cannot be handled */
+			dev_dbg(priv->dev, "%d: multicast LUT entry\n", i);
+			continue;
+		}
+
+		ret = cb(addr, fid, is_static, data);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int rtl8366rb_set_static_cam_entry(struct realtek_priv *priv, int entry,
+					  const u8 *addr, u16 fid)
+{
+	u16 camentry[5];
+	u8 *mac;
+	u32 val;
+	int ret;
+	int i;
+
+	/* 6 bytes of MAC, 2 bits FID, flag as static entry */
+	mac = (u8 *)&camentry[0];
+	ether_addr_copy(mac, addr);
+	rtl8366_ethad_swizzle(mac);
+	camentry[3] = ((fid & RTL8366RB_VLAN_FID_MASK)<< 13);
+	camentry[4] = BIT(1);
+
+	for (i = 0; i < ARRAY_SIZE(camentry); i++) {
+		val = camentry[i];
+		ret = regmap_write(priv->map, RTL8366RB_TABLE_WRITE_BASE + i, val);
+		if (ret)
+			return ret;
+	}
+
+	val = (entry << 3) | RTL8366RB_CAMTB_WRITE_CTRL;
+	return regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG, val);
+}
+
+static int rtl8366rb_set_static_l2_entry(struct realtek_priv *priv, int entry,
+					 const u8 *addr, u16 fid)
+{
+	u16 l2entry[5];
+	u8 *mac;
+	u32 val;
+	int ret;
+	int i;
+
+	/* 6 bytes of MAC, 2 bits FID, flag as static entry */
+	mac = (u8 *)&l2entry[0];
+	ether_addr_copy(mac, addr);
+	rtl8366_ethad_swizzle(mac);
+	l2entry[3] = ((fid & RTL8366RB_VLAN_FID_MASK) << 13);
+	l2entry[4] = BIT(1);
+
+	for (i = 0; i < ARRAY_SIZE(l2entry); i++) {
+		val = l2entry[i];
+		ret = regmap_write(priv->map, RTL8366RB_TABLE_WRITE_BASE + i, val);
+		if (ret)
+			return ret;
+	}
+
+	val = (entry << 3) | RTL8366RB_L2TB_WRITE_CTRL;
+	return regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG, val);
+}
+
+static int rtl8366rb_port_fdb_add(struct dsa_switch *ds, int port,
+				  const unsigned char *addr, u16 vid, struct dsa_db db)
+{
+	struct realtek_priv *priv = ds->priv;
+	int ret;
+	int i;
+
+	/* First check if we already have an entry for this address */
+	for (i = 0; i < RTL8366RB_CAM_ENTRIES; i++) {
+		u8 cam_addr[ETH_ALEN];
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_cam_entry(priv, i, cam_addr, &fid, &is_static);
+		if (ret)
+			return ret;
+
+		if (ether_addr_equal(cam_addr, addr) && (vid == fid))
+			return 0;
+	}
+	for (i = 0; i < RTL8366RB_L2TB_ENTRIES; i++) {
+		u8 l2_addr[ETH_ALEN];
+		bool is_multicast;
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_l2_lut_entry(priv, i, l2_addr, &fid, &is_multicast, &is_static);
+		if (ret)
+			return ret;
+
+		if (ether_addr_equal(l2_addr, addr) && (vid == fid))
+			return 0;
+	}
+
+	/* See of we can find a free CAM entry */
+	for (i = 0; i < RTL8366RB_CAM_ENTRIES; i++) {
+		u8 cam_addr[ETH_ALEN];
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_cam_entry(priv, i, cam_addr, &fid, &is_static);
+		if (ret)
+			return ret;
+
+		if (!is_valid_ether_addr(cam_addr))
+			return rtl8366rb_set_static_cam_entry(priv, i, addr, fid);
+	}
+	/* See if we can find an L2 LUT entry */
+	for (i = 0; i < RTL8366RB_L2TB_ENTRIES; i++) {
+		u8 l2_addr[ETH_ALEN];
+		bool is_multicast;
+		bool is_static;
+		u16 fid;
+
+		ret = rtl8366rb_get_l2_lut_entry(priv, i, l2_addr, &fid, &is_multicast, &is_static);
+		if (ret)
+			return ret;
+
+		if (!is_valid_ether_addr(l2_addr))
+			return rtl8366rb_set_static_l2_entry(priv, i, addr, fid);
+	}
+
+	/* No free entry */
+	return -ENOMEM;
+}
+
+static int rtl8366rb_port_fdb_del(struct dsa_switch *ds, int port,
+				  const unsigned char *addr, u16 vid, struct dsa_db db)
+{
+	struct realtek_priv *priv = ds->priv;
+	u8 null_addr[ETH_ALEN] = {0, 0, 0, 0, 0, 0};
+	int ret;
+	int i;
+
+	/* Check the CAM first */
+	for (i = 0; i < RTL8366RB_CAM_ENTRIES; i++) {
+		u8 cam_addr[ETH_ALEN];
+		bool is_static;
+		u16 cam_fid;
+
+		ret = rtl8366rb_get_cam_entry(priv, i, cam_addr, &cam_fid, &is_static);
+		if (ret)
+			return ret;
+
+		if (ether_addr_equal(cam_addr, addr) && (cam_fid == vid))
+			return rtl8366rb_set_static_cam_entry(priv, i, null_addr, 0);
+	}
+	/* Check the L2 LUT */
+	for (i = 0; i < RTL8366RB_L2TB_ENTRIES; i++) {
+		u8 l2_addr[ETH_ALEN];
+		bool is_multicast;
+		bool is_static;
+		u16 l2_fid;
+
+		ret = rtl8366rb_get_l2_lut_entry(priv, i, l2_addr, &l2_fid, &is_multicast, &is_static);
+		if (ret)
+			return ret;
+
+		if (is_multicast)
+			continue;
+
+		if (ether_addr_equal(l2_addr, addr) && (l2_fid == vid))
+			return rtl8366rb_set_static_l2_entry(priv, i, null_addr, 0);
+	}
+
+	/* Couldn't find it, let's say it's deleted since the same FDB is used
+	 * by all ports.
+	 */
+	return 0;
+}
+
 static int rtl8366rb_get_vlan_4k(struct realtek_priv *priv, u32 vid,
 				 struct rtl8366_vlan_4k *vlan4k)
 {
@@ -1547,7 +1863,7 @@ static int rtl8366rb_get_vlan_4k(struct realtek_priv *priv, u32 vid,
 
 	/* write table access control word */
 	ret = regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG,
-			   RTL8366RB_TABLE_VLAN_READ_CTRL);
+			   RTL8366RB_VLAN_READ_CTRL);
 	if (ret)
 		return ret;
 
@@ -1597,7 +1913,7 @@ static int rtl8366rb_set_vlan_4k(struct realtek_priv *priv,
 
 	/* write table access control word */
 	ret = regmap_write(priv->map, RTL8366RB_TABLE_ACCESS_CTRL_REG,
-			   RTL8366RB_TABLE_VLAN_WRITE_CTRL);
+			   RTL8366RB_VLAN_WRITE_CTRL);
 
 	return ret;
 }
@@ -1910,6 +2226,9 @@ static const struct dsa_switch_ops rtl8366rb_switch_ops_smi = {
 	.port_vlan_filtering = rtl8366rb_vlan_filtering,
 	.port_vlan_add = rtl8366_vlan_add,
 	.port_vlan_del = rtl8366_vlan_del,
+	.port_fdb_add = rtl8366rb_port_fdb_add,
+	.port_fdb_del = rtl8366rb_port_fdb_del,
+	.port_fdb_dump = rtl8366rb_port_fdb_dump,
 	.port_enable = rtl8366rb_port_enable,
 	.port_disable = rtl8366rb_port_disable,
 	.port_pre_bridge_flags = rtl8366rb_port_pre_bridge_flags,
