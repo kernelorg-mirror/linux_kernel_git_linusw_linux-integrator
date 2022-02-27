@@ -19,7 +19,16 @@
  * space to use as shadow memory for KASan as follows:
  *
  * +----+ 0xffffffff
- * |    |							\
+ * |    |\
+ * |    | |-> ZONE_HIGHMEM for vmalloc virtual address space.
+ * |    | |   Such as vmalloc(), GFP_HIGHUSER (__GFP__HIGHMEM),
+ * |    | |   module address using ARM_MODULE_PLTS, etc.
+ * |    | |
+ * |    | |   If CONFIG_KASAN_VMALLOC=y, this area would populate
+ * |    | |   shadow address on demand.
+ * |    |/
+ * +----+ VMALLOC_START
+ * |    |\
  * |    | |-> Static kernel image (vmlinux) BSS and page table
  * |    |/
  * +----+ PAGE_OFFSET
