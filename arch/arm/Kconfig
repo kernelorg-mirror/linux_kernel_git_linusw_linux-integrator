@@ -275,7 +275,7 @@ config NEED_MACH_MEMORY_H
 
 config ARM_KERNEL_IN_VMALLOC
 	bool "Compile the kernel into the VMALLOC area"
-	depends on !ARM_PATCH_PHYS_VIRT
+	# depends on !ARM_PATCH_PHYS_VIRT
 	select KASAN_VMALLOC if KASAN
 	select ARM_MODULE_PLTS if MODULES
 	help
