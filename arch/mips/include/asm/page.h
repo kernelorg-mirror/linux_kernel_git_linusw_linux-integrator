@@ -252,7 +252,15 @@ static inline int pfn_valid(unsigned long pfn)
 
 #endif
 
-#define virt_to_pfn(kaddr)   	PFN_DOWN(virt_to_phys((void *)(kaddr)))
+static inline unsigned long virt_to_pfn(const volatile void *kaddr)
+{
+	/*
+	 * MIPS virt_to_phys() returns a phys_addr_t which is
+	 * an unsigned int on MIPS, but the interface expects
+	 * unsigned long.
+	 */
+	return (unsigned long)PFN_DOWN(virt_to_phys(kaddr));
+}
 #define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
 
 extern bool __virt_addr_valid(const volatile void *kaddr);
