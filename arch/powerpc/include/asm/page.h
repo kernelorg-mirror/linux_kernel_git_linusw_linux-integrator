@@ -128,12 +128,6 @@ static inline bool pfn_valid(unsigned long pfn)
 #endif
 #endif
 
-#define virt_to_pfn(kaddr)	(__pa(kaddr) >> PAGE_SHIFT)
-#define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
-#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
-
-#define virt_addr_valid(kaddr)	pfn_valid(virt_to_pfn(kaddr))
-
 /*
  * On Book-E parts we need __va to parse the device tree and we can't
  * determine MEMORY_START until then.  However we can determine PHYSICAL_START
@@ -234,6 +228,15 @@ static inline bool pfn_valid(unsigned long pfn)
 #define __pa(x) ((unsigned long)(x) - PAGE_OFFSET + MEMORY_START)
 #endif
 #endif
+
+static inline unsigned long virt_to_pfn(const volatile void *kaddr)
+{
+	return __pa(kaddr) >> PAGE_SHIFT;
+}
+#define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
+#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
+
+#define virt_addr_valid(kaddr)	pfn_valid(virt_to_pfn(kaddr))
 
 /*
  * Unfortunately the PLT is in the BSS in the PPC32 ELF ABI,
