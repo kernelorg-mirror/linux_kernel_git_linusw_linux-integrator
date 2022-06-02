@@ -169,6 +169,7 @@ phys_addr_t linear_mapping_va_to_pa(unsigned long x);
 		linear_mapping_va_to_pa(_x) : kernel_mapping_va_to_pa(_x);	\
 	})
 
+extern unsigned long virt_to_pfn(const void *vaddr);
 #ifdef CONFIG_DEBUG_VIRTUAL
 extern phys_addr_t __virt_to_phys(unsigned long x);
 extern phys_addr_t __phys_addr_symbol(unsigned long x);
@@ -184,7 +185,6 @@ extern phys_addr_t __phys_addr_symbol(unsigned long x);
 #define phys_to_pfn(phys)	(PFN_DOWN(phys))
 #define pfn_to_phys(pfn)	(PFN_PHYS(pfn))
 
-#define virt_to_pfn(vaddr)	(phys_to_pfn(__pa(vaddr)))
 #define pfn_to_virt(pfn)	(__va(pfn_to_phys(pfn)))
 
 #define virt_to_page(vaddr)	(pfn_to_page(virt_to_pfn(vaddr)))
@@ -203,7 +203,7 @@ static __always_inline void *pfn_to_kaddr(unsigned long pfn)
 
 #define virt_addr_valid(vaddr)	({						\
 	unsigned long _addr = (unsigned long)vaddr;				\
-	(unsigned long)(_addr) >= PAGE_OFFSET && pfn_valid(virt_to_pfn(_addr));	\
+	(unsigned long)(_addr) >= PAGE_OFFSET && pfn_valid(virt_to_pfn((void *)_addr)); \
 })
 
 #define VM_DATA_DEFAULT_FLAGS	VM_DATA_FLAGS_NON_EXEC
