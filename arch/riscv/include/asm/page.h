@@ -16,6 +16,9 @@
 #define PAGE_SIZE	(_AC(1, UL) << PAGE_SHIFT)
 #define PAGE_MASK	(~(PAGE_SIZE - 1))
 
+/* This needs PAGE_SIZE so include it below the define */
+#include <asm/pgtable.h>
+
 #ifdef CONFIG_64BIT
 #define HUGE_MAX_HSTATE		2
 #else
@@ -160,7 +163,10 @@ extern phys_addr_t __phys_addr_symbol(unsigned long x);
 #define phys_to_pfn(phys)	(PFN_DOWN(phys))
 #define pfn_to_phys(pfn)	(PFN_PHYS(pfn))
 
-#define virt_to_pfn(vaddr)	(phys_to_pfn(__pa(vaddr)))
+static inline unsigned long virt_to_pfn(const void *vaddr)
+{
+	return phys_to_pfn(__pa(vaddr));
+}
 #define pfn_to_virt(pfn)	(__va(pfn_to_phys(pfn)))
 
 #define virt_to_page(vaddr)	(pfn_to_page(virt_to_pfn(vaddr)))
