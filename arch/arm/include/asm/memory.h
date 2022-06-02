@@ -288,10 +288,12 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 
 #endif
 
-#define virt_to_pfn(kaddr) \
-	((((unsigned long)(kaddr) - PAGE_OFFSET) >> PAGE_SHIFT) + \
-	 PHYS_PFN_OFFSET)
-
+static inline unsigned long virt_to_pfn(const void *p)
+{
+	unsigned long kaddr = (unsigned long)p;
+	return (((kaddr - PAGE_OFFSET) >> PAGE_SHIFT) +
+		PHYS_PFN_OFFSET);
+}
 #define __pa_symbol_nodebug(x)	__virt_to_phys_nodebug((x))
 
 #ifdef CONFIG_DEBUG_VIRTUAL
