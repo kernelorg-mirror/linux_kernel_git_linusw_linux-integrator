@@ -6,18 +6,11 @@
 #include <asm/page.h>
 #include <asm/sections.h>
 
-phys_addr_t __virt_to_phys(unsigned long x)
+unsigned long virt_to_pfn(const void *vaddr)
 {
-	/*
-	 * Boundary checking aginst the kernel linear mapping space.
-	 */
-	WARN(!is_linear_mapping(x) && !is_kernel_mapping(x),
-	     "virt_to_phys used for non-linear address: %pK (%pS)\n",
-	     (void *)x, (void *)x);
-
-	return __va_to_pa_nodebug(x);
+	return phys_to_pfn(__pa(vaddr));
 }
-EXPORT_SYMBOL(__virt_to_phys);
+EXPORT_SYMBOL(virt_to_pfn);
 
 phys_addr_t __phys_addr_symbol(unsigned long x)
 {
