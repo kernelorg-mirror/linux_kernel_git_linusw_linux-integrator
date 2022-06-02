@@ -10,7 +10,7 @@ KCOV_INSTRUMENT_init.o := n
 
 obj-y += init.o
 obj-y += extable.o
-obj-$(CONFIG_MMU) += fault.o pageattr.o
+obj-$(CONFIG_MMU) += fault.o pageattr.o physaddr.o
 obj-y += cacheflush.o
 obj-y += context.o
 
@@ -25,9 +25,9 @@ ifdef CONFIG_KASAN
 KASAN_SANITIZE_kasan_init.o := n
 KASAN_SANITIZE_init.o := n
 ifdef CONFIG_DEBUG_VIRTUAL
-KASAN_SANITIZE_physaddr.o := n
+KASAN_SANITIZE_physaddr-debug.o := n
 endif
 endif
 
-obj-$(CONFIG_DEBUG_VIRTUAL) += physaddr.o
+obj-$(CONFIG_DEBUG_VIRTUAL) += physaddr-debug.o
 obj-$(CONFIG_RISCV_DMA_NONCOHERENT) += dma-noncoherent.o
