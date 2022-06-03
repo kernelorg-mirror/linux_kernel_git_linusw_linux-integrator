@@ -111,7 +111,6 @@ extern phys_addr_t __virt_to_phys(volatile const void *x);
 #define __virt_to_phys(x)	__virt_to_phys_nodebug(x)
 #endif
 
-#define virt_to_phys virt_to_phys
 static inline phys_addr_t virt_to_phys(const volatile void *x)
 {
 	return __virt_to_phys(x);
