@@ -63,7 +63,7 @@
 #define MODULES_VADDR		(PAGE_OFFSET - SZ_8M)
 #endif
 
-#if TASK_SIZE > MODULES_VADDR
+#if (TASK_SIZE > MODULES_VADDR) && !defined(CONFIG_ARM_KERNEL_IN_VMALLOC)
 #error Top of user space clashes with start of module space
 #endif
 
