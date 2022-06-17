@@ -38,8 +38,12 @@
  * The vmalloc() routines leaves a hole of 4kB between each vmalloced
  * area for the same reason. ;)
  */
-#define VMALLOC_OFFSET		(8*1024*1024)
+#ifdef CONFIG_VMSPLIT_4G_4G
+#define VMALLOC_START		0xf0000000UL
+#else /* CONFIG_VMSPLIT_4G_4G */
 #define VMALLOC_START		(((unsigned long)high_memory + VMALLOC_OFFSET) & ~(VMALLOC_OFFSET-1))
+#endif /* CONFIG_VMSPLIT_4G_4G */
+#define VMALLOC_OFFSET		(8*1024*1024)
 #define VMALLOC_END		0xff800000UL
 
 #define LIBRARY_TEXT_START	0x0c000000
