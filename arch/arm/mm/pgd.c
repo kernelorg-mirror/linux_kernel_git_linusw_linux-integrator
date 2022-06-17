@@ -39,11 +39,38 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	if (!new_pgd)
 		goto no_pgd;
 
-	memset(new_pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
+#ifdef CONFIG_VMSPLIT_4G_4G
+	/*
+	 * When splitting the kernel 4G/4G only the VMALLOC_AREA is
+	 * mapped to userspace or anything else cloning the MM.
+	 *
+	 * The VMALLOC area is always in the third PGD entry, at 0xf0000000
+	 * so for the 4G-by-4G split we only need to copy one PGD entry.
+	 * This PGD entry will in turn refer to the existing (folded)
+	 * P4D-PUD-PMD in essence the existing kernel PMDs-to-PTEs.
+	 *
+	 * TODO: copy PKMAP for highmem paging?
+	 * TODO: fix the KASAN mappings for 4G by 4G split
+	 */
+	init_pgd = pgd_offset_k(VMALLOC_START);
 
+	memset(new_pgd, 0, PTRS_PER_PGD * sizeof(pgd_t));
+
+	pr_debug("PGD at index %lu: copy from %08x to %08x size %08x\n",
+		 pgd_index(VMALLOC_START),
+		 (u32)init_pgd,
+		 (u32)(new_pgd + pgd_index(VMALLOC_START)),
+		 (u32)sizeof(pgd_t));
+	memcpy(new_pgd + pgd_index(VMALLOC_START),
+	       init_pgd,
+	       sizeof(pgd_t));
+
+#else
 	/*
 	 * Copy over the kernel and IO PGD entries
 	 */
+	memset(new_pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
+
 	init_pgd = pgd_offset_k(0);
 	memcpy(new_pgd + USER_PTRS_PER_PGD, init_pgd + USER_PTRS_PER_PGD,
 		       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
@@ -81,6 +108,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	clean_dcache_area(new_pmd, PTRS_PER_PMD * sizeof(pmd_t));
 #endif /* CONFIG_KASAN */
 #endif /* CONFIG_LPAE */
+#endif /* CONFIG_VMSPLIT_4G_4G */
 
 	if (!vectors_high()) {
 		/*

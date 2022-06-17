@@ -131,7 +131,13 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		__flush_icache_all();
 
 	if (!cpumask_test_and_set_cpu(cpu, mm_cpumask(next)) || prev != next) {
-		check_and_switch_context(next, tsk);
+		/*
+		 * In the 4G-by-4G split case, the context will switch when we
+		 * reach userspace.
+		 */
+		if (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G))
+			check_and_switch_context(next, tsk);
+		/* CHECKME: is this the right thing to do for 4G-by-4G? */
 		if (cache_is_vivt())
 			cpumask_clear_cpu(cpu, mm_cpumask(prev));
 	}

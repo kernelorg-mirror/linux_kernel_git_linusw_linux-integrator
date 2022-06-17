@@ -41,8 +41,14 @@
  * TASK_UNMAPPED_BASE - the lower boundary of the mmap VM area
  */
 #ifndef CONFIG_KASAN
-#define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M))
+#ifdef CONFIG_VMSPLIT_4G_4G
+/* We let the task use memory up to just adjacent to VMALLOC_START at 0xF0000000 */
+#define TASK_SIZE		(0xF0000000UL - UL(SZ_16M))
 #else
+#define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M))
+#endif
+#else
+/* TODO: fix this for KASAN on 4G by 4G split */
 #define TASK_SIZE		(KASAN_SHADOW_START)
 #endif
 #define TASK_UNMAPPED_BASE	ALIGN(TASK_SIZE / 3, SZ_16M)

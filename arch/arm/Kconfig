@@ -1189,6 +1189,9 @@ choice
 		bool "2G/2G user/kernel split"
 	config VMSPLIT_1G
 		bool "1G/3G user/kernel split"
+	config VMSPLIT_4G_4G
+		bool "4G/4G user/kernel split using separate address spaces"
+		select ARM_KERNEL_IN_VMALLOC
 endchoice
 
 config PAGE_OFFSET
@@ -1197,6 +1200,7 @@ config PAGE_OFFSET
 	default 0x40000000 if VMSPLIT_1G
 	default 0x80000000 if VMSPLIT_2G
 	default 0xB0000000 if VMSPLIT_3G_OPT
+	default 0x00000000 if VMSPLIT_4G_4G
 	default 0xC0000000
 
 config KASAN_SHADOW_OFFSET
@@ -1206,6 +1210,7 @@ config KASAN_SHADOW_OFFSET
 	default 0x5f000000 if PAGE_OFFSET=0x80000000
 	default 0x9f000000 if PAGE_OFFSET=0xC0000000
 	default 0x8f000000 if PAGE_OFFSET=0xB0000000
+	# TODO: fix for VMSPLIT_4G_4G
 	default 0xffffffff
 
 config NR_CPUS

@@ -979,7 +979,8 @@ static void __init __create_mapping(struct mm_struct *mm, struct map_desc *md,
  */
 static void __init create_mapping(struct map_desc *md)
 {
-	if (md->virtual != vectors_base() && md->virtual < TASK_SIZE) {
+	if (md->virtual != vectors_base() &&
+	    (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G) && md->virtual < TASK_SIZE)) {
 		pr_warn("BUG: not creating mapping for 0x%08llx at 0x%08lx in user region\n",
 			(long long)__pfn_to_phys((u64)md->pfn), md->virtual);
 		return;
@@ -1177,7 +1178,11 @@ static int __init early_vmalloc(char *arg)
 			vmalloc_reserve >> 20);
 	}
 
-	vmalloc_max = VMALLOC_END - (PAGE_OFFSET + SZ_32M + VMALLOC_OFFSET);
+	if (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G))
+		vmalloc_max = VMALLOC_END - (PAGE_OFFSET + SZ_32M + VMALLOC_OFFSET);
+	else
+		/* In the 4G-by-4G split this is hardcoded to 256 MB */
+		vmalloc_max = VMALLOC_END - VMALLOC_START;
 	if (vmalloc_reserve > vmalloc_max) {
 		vmalloc_reserve = vmalloc_max;
 		pr_warn("vmalloc area is too big, limiting to %luMiB\n",
@@ -1198,14 +1203,25 @@ void __init adjust_lowmem_bounds(void)
 	phys_addr_t lowmem_limit = 0;
 
 	/*
+	 * vmalloc_limit is the end of the portion of the VMALLOC area that
+	 * is backed by physical memory.
+	 *
 	 * Let's use our own (unoptimized) equivalent of __pa() that is
 	 * not affected by wrap-arounds when sizeof(phys_addr_t) == 4.
 	 * The result is used as the upper bound on physical memory address
 	 * and may itself be outside the valid range for which phys_addr_t
 	 * and therefore __pa() is defined.
 	 */
-	vmalloc_limit = (u64)VMALLOC_END - vmalloc_size - VMALLOC_OFFSET -
+	if (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G))
+		vmalloc_limit = (u64)VMALLOC_END - vmalloc_size - VMALLOC_OFFSET -
 			PAGE_OFFSET + PHYS_OFFSET;
+	else
+		/*
+		 * This define VMALLOC_START is hardcoded for this case,
+		 * let's just run lowmem all the way up to VMALLOC_START
+		 * if need be. Set the physical limit to max phys address.
+		 */
+		vmalloc_limit = PHYS_ADDR_MAX;
 
 	/*
 	 * The first usable region must be PMD aligned. Mark its start
@@ -1223,16 +1239,29 @@ void __init adjust_lowmem_bounds(void)
 
 	for_each_mem_range(i, &block_start, &block_end) {
 		if (block_start < vmalloc_limit) {
-			if (block_end > lowmem_limit)
+			if (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G)) {
+				if (block_end > lowmem_limit) {
+					/*
+					 * Compare as u64 to ensure vmalloc_limit does
+					 * not get truncated. block_end should always
+					 * fit in phys_addr_t so there should be no
+					 * issue with assignment.
+					 */
+					lowmem_limit = min_t(u64,
+							     vmalloc_limit,
+							     block_end);
+				}
+			} else {
 				/*
-				 * Compare as u64 to ensure vmalloc_limit does
-				 * not get truncated. block_end should always
-				 * fit in phys_addr_t so there should be no
-				 * issue with assignment.
+				 * Lowmem should never move into the VMALLOC area when
+				 * using the 4G-by-4G split, so use the end of the last
+				 * block of physical memory as the end of lowmem, unless
+				 * it moves past the end of adressable memory.
 				 */
 				lowmem_limit = min_t(u64,
-							 vmalloc_limit,
-							 block_end);
+						     PHYS_ADDR_MAX,
+						     block_end);
+			}
 
 			/*
 			 * Find the first non-pmd-aligned page, and point
