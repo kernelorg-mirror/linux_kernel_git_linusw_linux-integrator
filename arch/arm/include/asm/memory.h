@@ -295,7 +295,12 @@ static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 		    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
 			return addr - KERNEL_OFFSET + kernel_sec_start;
 		else
-			return addr - PAGE_OFFSET + PHYS_OFFSET;
+			/*
+			 * Do not include the kernel in the 1-1 map, it is
+			 * mapped at KERNEL_OFFSET.
+			 */
+			return addr - PAGE_OFFSET + PHYS_OFFSET +
+				KERNEL_SECTION_SIZE;
 	}
 }
 
@@ -314,7 +319,12 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 		if (x >= kernel_sec_start && x < kernel_sec_end)
 			return x - kernel_sec_start + KERNEL_OFFSET;
 		else
-			return x - PHYS_OFFSET + PAGE_OFFSET;
+			/*
+			 * Do not include the kernel in the 1-1-map it is
+			 * mapped at KERNEL_OFFSET.
+			 */
+			return x - PHYS_OFFSET + PAGE_OFFSET -
+				KERNEL_SECTION_SIZE;
 	}
 }
 #endif
@@ -332,7 +342,7 @@ static inline unsigned long virt_to_pfn(const void *p)
 			return (((kaddr - KERNEL_OFFSET) >> PAGE_SHIFT) +
 				KERNEL_PFN_OFFSET);
 		} else {
-			return (((kaddr - PAGE_OFFSET) >> PAGE_SHIFT) +
+			return (((kaddr - PAGE_OFFSET + KERNEL_SECTION_SIZE) >> PAGE_SHIFT) +
 				PHYS_PFN_OFFSET);
 		}
 	}
