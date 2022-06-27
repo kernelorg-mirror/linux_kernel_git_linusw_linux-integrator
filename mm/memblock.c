@@ -2031,10 +2031,11 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 				      PFN_DOWN(end), max_low_pfn);
 
 	/* Guard against walking beyond the end of memory */
-	if ((start_pfn == 0) && ((start > (PHYS_ADDR_MAX - PAGE_SIZE)) && start < PHYS_ADDR_MAX))
+	if ((start_pfn == 0) &&
+	    ((start > (PHYS_ADDR_MAX - PAGE_SIZE)) && start < PHYS_ADDR_MAX))
 		start_pfn = PFN_DOWN(start);
 
-	if (start_pfn >= end_pfn)
+	if (start_pfn > end_pfn)
 		return 0;
 
 	__free_pages_memory(start_pfn, end_pfn);
