@@ -946,6 +946,12 @@ static void __init __create_mapping(struct mm_struct *mm, struct map_desc *md,
  */
 static void __init create_mapping(struct map_desc *md)
 {
+	pr_info("creating mapping for 0x%08llx->0x%08llx at 0x%08lx-0x%08lx\n",
+		(long long)__pfn_to_phys((u64)md->pfn),
+		(long long)__pfn_to_phys((u64)md->pfn) + (long long)md->length,
+		md->virtual,
+		md->virtual + md->length);
+
 	if (md->virtual != vectors_base() &&
 	    (!IS_ENABLED(CONFIG_VMSPLIT_4G_4G) && md->virtual < TASK_SIZE)) {
 		pr_warn("BUG: not creating mapping for 0x%08llx at 0x%08lx in user region\n",
@@ -1166,14 +1172,24 @@ void __init adjust_lowmem_bounds(void)
 	phys_addr_t lowmem_limit = 0;
 
 	/*
+	 * vmalloc_limit is the end of the portion of the VMALLOC area that
+	 * is backed by physical memory.
+	 *
 	 * Let's use our own (unoptimized) equivalent of __pa() that is
 	 * not affected by wrap-arounds when sizeof(phys_addr_t) == 4.
 	 * The result is used as the upper bound on physical memory address
 	 * and may itself be outside the valid range for which phys_addr_t
 	 * and therefore __pa() is defined.
 	 */
-	vmalloc_limit = (u64)VMALLOC_END - vmalloc_size - VMALLOC_OFFSET -
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+		vmalloc_limit = (u64)VMALLOC_END - vmalloc_size - VMALLOC_OFFSET -
 			PAGE_OFFSET + PHYS_OFFSET;
+	else
+		/* Use the physical memory above the the kernel */
+		vmalloc_limit = kernel_sec_end + ;
+
+	pr_info("adjust_lowmem_bounds(): VMALLOC_START = %08llx, VMALLOC_END = %08llx, vmalloc_size = %08llx, VMALLOC_OFFSET = %08llx, PAGE_OFFSET = %08llx, PHYS_OFFSET = %08llx, vmalloc_limit = %08llx\n",
+		(u64)VMALLOC_START, (u64)VMALLOC_END, (u64)vmalloc_size, (u64)VMALLOC_OFFSET, (u64)PAGE_OFFSET, (u64)PHYS_OFFSET, vmalloc_limit);
 
 	/*
 	 * The first usable region must be PMD aligned. Mark its start
@@ -1225,6 +1241,7 @@ void __init adjust_lowmem_bounds(void)
 		}
 	}
 
+	pr_info("resulting lowmem_limit = %08x\n", lowmem_limit);
 	arm_lowmem_limit = lowmem_limit;
 
 	high_memory = __va(arm_lowmem_limit - 1) + 1;
@@ -1498,8 +1515,8 @@ static void __init map_lowmem(void)
 	for_each_mem_range(i, &start, &end) {
 		struct map_desc map;
 
-		pr_debug("map lowmem start: 0x%08llx, end: 0x%08llx\n",
-			 (long long)start, (long long)end);
+		pr_info("map lowmem start: 0x%08llx, end: 0x%08llx\n",
+			(long long)start, (long long)end);
 		if (end > arm_lowmem_limit)
 			end = arm_lowmem_limit;
 		if (start >= end)
@@ -1570,6 +1587,7 @@ static void __init map_lowmem(void)
 		map.type = MT_MEMORY_RW;
 		create_mapping(&map);
 	}
+	pr_info("mapped lowmem\n");
 }
 
 /* Reserve memory used by the kernel when placing the kernel inside VMALLOC */
@@ -1777,21 +1795,35 @@ void __init paging_init(const struct machine_desc *mdesc)
 {
 	void *zero_page;
 
-	pr_debug("physical kernel sections: 0x%08llx-0x%08llx\n",
-		 kernel_sec_start, kernel_sec_end);
+	pr_info("physical kernel sections: 0x%08llx-0x%08llx\n",
+		kernel_sec_start, kernel_sec_end);
 
 	prepare_page_table();
 	map_lowmem();
 	memblock_set_current_limit(arm_lowmem_limit);
-	pr_debug("lowmem limit is %08llx\n", (long long)arm_lowmem_limit);
+	pr_info("lowmem limit is %08llx\n", (long long)arm_lowmem_limit);
 	/*
 	 * After this point early_alloc(), i.e. the memblock allocator, can
 	 * be used
 	 */
+	if (IS_ENABLED(CONFIG_VMSPLIT_4G_4G)) {
+		struct map_desc map;
+		pr_info("Reserve page 0\n");
+		map.pfn = 0;
+		map.virtual = 0;
+		map.length = PAGE_SIZE;
+		map.type = MT_MEMORY_RW;
+		vm_reserve_kernel(&map);
+	}
+	pr_info("map_kernel()\n");
 	map_kernel();
+	pr_info("dma_contiguous_remap()\n");
 	dma_contiguous_remap();
+	pr_info("early_fixmap_shutdown()\n");
 	early_fixmap_shutdown();
+	pr_info("devicemaps_init()\n");
 	devicemaps_init(mdesc);
+	pr_info("kmap_init()\n");
 	kmap_init();
 	tcm_init();
 
@@ -1800,10 +1832,13 @@ void __init paging_init(const struct machine_desc *mdesc)
 	/* allocate the zero page. */
 	zero_page = early_alloc(PAGE_SIZE);
 
+	pr_info("bootmem_init()\n");
 	bootmem_init();
 
 	empty_zero_page = virt_to_page(zero_page);
+	pr_info("__flush_dcache_page()\n");
 	__flush_dcache_page(NULL, empty_zero_page);
+	pr_info("paging_init() done\n");
 }
 
 void __init early_mm_init(const struct machine_desc *mdesc)

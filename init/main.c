@@ -838,19 +838,24 @@ static void __init mm_init(void)
 	stack_depot_early_init();
 	mem_init();
 	mem_init_print_info();
+	pr_info("kmem_cache_init()\n");
 	kmem_cache_init();
 	/*
 	 * page_owner must be initialized after buddy is ready, and also after
 	 * slab is ready so that stack_depot_init() works properly
 	 */
+	pr_info("page_ext_init_flatmem_late()\n");
 	page_ext_init_flatmem_late();
 	kmemleak_init();
+	pr_info("pgtable_init()\n");
 	pgtable_init();
 	debug_objects_mem_init();
+	pr_info("vmalloc_init()\n");
 	vmalloc_init();
 	/* Should be run before the first non-init thread is created */
 	init_espfix_bsp();
 	/* Should be run after espfix64 is set up. */
+	pr_info("pti_init()\n");
 	pti_init();
 }
 

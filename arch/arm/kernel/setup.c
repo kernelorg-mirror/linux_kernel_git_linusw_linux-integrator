@@ -754,6 +754,8 @@ int __init arm_add_memory(u64 start, u64 size)
 {
 	u64 aligned_start;
 
+	pr_info("arm_add_memory() start = %08llx, size = %08llx\n",
+		start, size);
 	/*
 	 * Ensure that start/size are aligned to a page boundary.
 	 * Size is rounded down, start is rounded up.
@@ -1153,8 +1155,10 @@ void __init setup_arch(char **cmdline_p)
 
 	early_ioremap_reset();
 
+	pr_info("paging_init()\n");
 	paging_init(mdesc);
 	kasan_init();
+	pr_info("request_standard_resources()\n");
 	request_standard_resources(mdesc);
 
 	if (mdesc->restart) {
@@ -1162,6 +1166,7 @@ void __init setup_arch(char **cmdline_p)
 		register_restart_handler(&arm_restart_nb);
 	}
 
+	pr_info("unflatten_device_tree()\n");
 	unflatten_device_tree();
 
 	arm_dt_init_cpu_maps();
@@ -1174,6 +1179,7 @@ void __init setup_arch(char **cmdline_p)
 			else if (mdesc->smp)
 				smp_set_ops(mdesc->smp);
 		}
+		pr_info("smp_init_cpus()\n");
 		smp_init_cpus();
 		smp_build_mpidr_hash();
 	}
@@ -1182,6 +1188,7 @@ void __init setup_arch(char **cmdline_p)
 	if (!is_smp())
 		hyp_mode_check();
 
+	pr_info("reserve_crashkernel()\n");
 	reserve_crashkernel();
 
 #ifdef CONFIG_GENERIC_IRQ_MULTI_HANDLER
@@ -1194,8 +1201,11 @@ void __init setup_arch(char **cmdline_p)
 #endif
 #endif
 
+	pr_info("machibe init_early()\n");
 	if (mdesc->init_early)
 		mdesc->init_early();
+
+	pr_info("exit setup_arch()\n");
 }
 
 

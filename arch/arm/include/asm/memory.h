@@ -279,7 +279,7 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 	return t;
 }
 
-#else
+#else /* !CONFIG_ARM_PATCH_PHYS_VIRT */
 
 #define PHYS_OFFSET	PLAT_PHYS_OFFSET
 #define PHYS_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
@@ -291,8 +291,7 @@ static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 	} else {
 		phys_addr_t addr = (phys_addr_t)x;
 
-		if ((addr >= KERNEL_OFFSET) &&
-		    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
+		if ((addr >= VMALLOC_START) && (addr < VMALLOC_END))
 			return addr - KERNEL_OFFSET + kernel_sec_start;
 		else
 			/*
