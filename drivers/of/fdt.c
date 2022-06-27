@@ -1225,6 +1225,8 @@ void __init __weak early_init_dt_add_memory_arch(u64 base, u64 size)
 {
 	const u64 phys_offset = MIN_MEMBLOCK_ADDR;
 
+	pr_info("early_init_dt_add_memory_arch() base = %08llx, size = %08llx\n",
+		base, size);
 	if (size < PAGE_SIZE - (base & ~PAGE_MASK)) {
 		pr_warn("Ignoring memory block 0x%llx - 0x%llx\n",
 			base, base + size);
@@ -1244,7 +1246,7 @@ void __init __weak early_init_dt_add_memory_arch(u64 base, u64 size)
 	}
 
 	if (base + size - 1 > MAX_MEMBLOCK_ADDR) {
-		pr_warn("Ignoring memory range 0x%llx - 0x%llx\n",
+		pr_warn("Ignoring memory range (1) 0x%llx - 0x%llx\n",
 			((u64)MAX_MEMBLOCK_ADDR) + 1, base + size);
 		size = MAX_MEMBLOCK_ADDR - base + 1;
 	}
@@ -1255,10 +1257,10 @@ void __init __weak early_init_dt_add_memory_arch(u64 base, u64 size)
 		return;
 	}
 	if (base < phys_offset) {
-		pr_warn("Ignoring memory range 0x%llx - 0x%llx\n",
+		pr_warn("Ignoring memory range (2) 0x%llx - 0x%llx\n",
 			base, phys_offset);
-		size -= phys_offset - base;
-		base = phys_offset;
+		// size -= phys_offset - base;
+		// base = phys_offset;
 	}
 	memblock_add(base, size);
 }

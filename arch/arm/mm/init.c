@@ -218,6 +218,8 @@ void __init bootmem_init(void)
 	memblock_allow_resize();
 
 	find_limits(&min_low_pfn, &max_low_pfn, &max_pfn);
+	pr_info("bootmem_init: found min_low_pfn = %08lx, max_low_pfn = %08lx, max_pfn = %08lx\n",
+		min_low_pfn, max_low_pfn, max_pfn);
 
 	early_memtest((phys_addr_t)min_low_pfn << PAGE_SHIFT,
 		      (phys_addr_t)max_low_pfn << PAGE_SHIFT);
@@ -281,6 +283,8 @@ static void __init free_highpages(void)
  */
 void __init mem_init(void)
 {
+	pr_info("mem_init()\n");
+
 #ifdef CONFIG_ARM_LPAE
 	swiotlb_init(max_pfn > arm_dma_pfn_limit, SWIOTLB_VERBOSE);
 #endif
@@ -295,6 +299,7 @@ void __init mem_init(void)
 	free_reserved_area(__va(PHYS_OFFSET), swapper_pg_dir, -1, NULL);
 #endif
 
+	pr_info("free_highpages()\n");
 	free_highpages();
 
 	/*

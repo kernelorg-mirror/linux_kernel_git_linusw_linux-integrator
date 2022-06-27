@@ -1910,7 +1910,7 @@ static void __init_memblock __memblock_dump_all(void)
 
 void __init_memblock memblock_dump_all(void)
 {
-	if (memblock_debug)
+	//if (memblock_debug)
 		__memblock_dump_all();
 }
 
@@ -2035,6 +2035,8 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 	    ((start > (PHYS_ADDR_MAX - PAGE_SIZE)) && start < PHYS_ADDR_MAX))
 		start_pfn = PFN_DOWN(start);
 
+	pr_info("%s: start %08x end %08x, start_pfn %08lx, end_pfn %08lx\n", __func__, start, end, start_pfn, end_pfn);
+
 	if (start_pfn > end_pfn)
 		return 0;
 
@@ -2069,8 +2071,10 @@ static unsigned long __init free_low_memory_core_early(void)
 	phys_addr_t start, end;
 	u64 i;
 
+	pr_info("free_low_memory_core_early()\n");
 	memblock_clear_hotplug(0, -1);
 
+	pr_info("memmap_init_reserved_pages()\n");
 	memmap_init_reserved_pages();
 
 	/*
@@ -2078,6 +2082,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	 *  because in some case like Node0 doesn't have RAM installed
 	 *  low ram will be on Node1
 	 */
+	pr_info("for_each_free_mem_range()\n");
 	for_each_free_mem_range(i, NUMA_NO_NODE, MEMBLOCK_NONE, &start, &end,
 				NULL)
 		count += __free_memory_core(start, end);
@@ -2119,6 +2124,7 @@ void __init memblock_free_all(void)
 	reset_all_zones_managed_pages();
 
 	pages = free_low_memory_core_early();
+	pr_info("totalram_pages_add() pages = %08lx\n", pages);
 	totalram_pages_add(pages);
 }
 
