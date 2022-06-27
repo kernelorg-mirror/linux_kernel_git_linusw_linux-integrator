@@ -1816,6 +1816,15 @@ void __init paging_init(const struct machine_desc *mdesc)
 	 * After this point early_alloc(), i.e. the memblock allocator, can
 	 * be used
 	 */
+	if (IS_ENABLED(CONFIG_VMSPLIT_4G_4G)) {
+		struct map_desc map;
+		pr_info("Reserve page 0\n");
+		map.pfn = 0;
+		map.virtual = 0;
+		map.length = PAGE_SIZE;
+		map.type = MT_MEMORY_RW;
+		vm_reserve_kernel(&map);
+	}
 	map_kernel();
 	dma_contiguous_remap();
 	early_fixmap_shutdown();
