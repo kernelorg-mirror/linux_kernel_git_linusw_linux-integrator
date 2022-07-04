@@ -22,6 +22,8 @@ void vexpress_flags_set(u32 data)
 	if (WARN_ON(!base))
 		return;
 
+
+	pr_info("write %08x into SYS_FLAGSSET\n", data);
 	writel(~0, base + SYS_FLAGSCLR);
 	writel(data, base + SYS_FLAGSSET);
 }

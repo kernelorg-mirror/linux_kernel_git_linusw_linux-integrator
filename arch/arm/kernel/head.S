@@ -44,6 +44,11 @@
 #define PMD_ORDER	2
 #endif
 
+	.macro	kputc,val
+	mov	r0, \val
+	bl	printch
+	.endm
+
 	.globl	swapper_pg_dir
 	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - PG_DIR_SIZE
 
@@ -392,6 +397,17 @@ ENTRY(secondary_startup)
 
  ARM_BE8(setend	be)				@ ensure we are in BE8 mode
 
+	mov	r6, r0
+	mov	r7, r1
+	mov	r8, r2
+	kputc	#'S'
+	kputc	#'E'
+	kputc	#'C'
+	kputc	#'\n'
+	mov	r2, r8
+	mov	r1, r7
+	mov	r0, r6
+
 #ifdef CONFIG_ARM_VIRT_EXT
 	bl	__hyp_stub_install_secondary
 #endif
@@ -406,7 +422,18 @@ ENTRY(secondary_startup)
 
 	/*
 	 * Use the page tables supplied from  __cpu_up.
-	 */
+	*/
+	mov	r6, r0
+	mov	r7, r1
+	mov	r8, r2
+	kputc	#'T'
+	kputc	#'A'
+	kputc	#'B'
+	kputc	#'\n'
+	mov	r2, r8
+	mov	r1, r7
+	mov	r0, r6
+
 	adr_l	r3, secondary_data
 	mov_l	r12, __secondary_switched
 	ldrd	r4, r5, [r3, #0]		@ get secondary_data.pgdir
@@ -419,6 +446,8 @@ ARM_BE8(eor	r4, r4, r5)			@ without using a temp reg.
 	ldr	r12, [r10, #PROCINFO_INITFUNC]
 	add	r12, r12, r10			@ initialise processor
 						@ (return control reg)
+	badr	lr, __enable_mmu		@ return address
+
 	ret	r12
 ENDPROC(secondary_startup)
 ENDPROC(secondary_startup_arm)
@@ -431,6 +460,11 @@ ENTRY(__secondary_switched)
 	mcr	p15, 0, ip, c2, c0, 0	@ set TTBR0
 	instr_sync
 #endif
+	kputc	#'S'
+	kputc	#'W'
+	kputc	#'2'
+	kputc	#'\n'
+
 	adr_l	r7, secondary_data + 12		@ get secondary_data.stack
 	ldr	sp, [r7]
 	ldr	r0, [r7, #4]			@ get secondary_data.task
@@ -457,6 +491,18 @@ ENDPROC(__secondary_switched)
  *  r13 = *virtual* address to jump to upon completion
  */
 __enable_mmu:
+	mov	r10, r0
+	mov	r11, r1
+	mov	r12, r2
+	kputc	#'E'
+	kputc	#'N'
+	kputc	#'M'
+	kputc	#'M'
+	kputc	#'U'
+	kputc	#'\n'
+	mov	r2, r12
+	mov	r1, r11
+	mov	r0, r10
 #if defined(CONFIG_ALIGNMENT_TRAP) && __LINUX_ARM_ARCH__ < 6
 	orr	r0, r0, #CR_A
 #else
@@ -478,6 +524,17 @@ __enable_mmu:
 	mcr	p15, 0, r5, c3, c0, 0		@ load domain access register
 	mcr	p15, 0, r4, c2, c0, 0		@ load page table pointer
 #endif
+	mov	r10, r0
+	mov	r11, r1
+	mov	r12, r2
+	kputc	#'T'
+	kputc	#'T'
+	kputc	#'B'
+	kputc	#'R'
+	kputc	#'\n'
+	mov	r2, r12
+	mov	r1, r11
+	mov	r0, r10
 	b	__turn_mmu_on
 ENDPROC(__enable_mmu)
 
@@ -498,6 +555,16 @@ ENDPROC(__enable_mmu)
 	.align	5
 	.pushsection	.idmap.text, "ax"
 ENTRY(__turn_mmu_on)
+	mov	r6, r0
+	mov	r7, r1
+	mov	r8, r2
+	kputc	#'O'
+	kputc	#'N'
+	kputc	#'\n'
+	mov	r2, r8
+	mov	r1, r7
+	mov	r0, r6
+
 	mov	r0, r0
 	instr_sync
 	mcr	p15, 0, r0, c1, c0, 0		@ write control reg

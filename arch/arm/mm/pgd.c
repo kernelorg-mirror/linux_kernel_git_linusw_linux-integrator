@@ -45,6 +45,12 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	 * Copy over the kernel and IO PGD entries
 	 */
 	init_pgd = pgd_offset_k(0);
+	pr_info("pgd_alloc() init_pgd = 0x%08lx PTRS_PER_PGD = %08x, sizeof(pgd_t) = %08x, copy %08x pointers from offset %08x\n",
+		(unsigned long)init_pgd,
+		(unsigned int)PTRS_PER_PGD,
+		sizeof(pgd_t),
+		(unsigned int)(PTRS_PER_PGD - USER_PTRS_PER_PGD),
+		(unsigned int)USER_PTRS_PER_PGD);
 	memcpy(new_pgd + USER_PTRS_PER_PGD, init_pgd + USER_PTRS_PER_PGD,
 		       (PTRS_PER_PGD - USER_PTRS_PER_PGD) * sizeof(pgd_t));
 

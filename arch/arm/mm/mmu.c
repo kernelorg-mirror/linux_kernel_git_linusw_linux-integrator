@@ -1286,6 +1286,7 @@ static __init void prepare_page_table(void)
 {
 	unsigned long addr;
 	phys_addr_t end;
+	unsigned long idstart = (unsigned long)virt_to_idmap(__idmap_text_start);
 
 	/*
 	 * Clear out all the mappings below the kernel image.
@@ -1301,6 +1302,7 @@ static __init void prepare_page_table(void)
 	 * and MODULES_VADDR. Do not clear the KASan shadow memory mappings.
 	 */
 	for (addr = 0; addr < KASAN_SHADOW_START; addr += PMD_SIZE)
+		// Patch me too then
 		pmd_clear(pmd_off_k(addr));
 	/*
 	 * Skip over the KASan shadow area. KASAN_SHADOW_END is sometimes
@@ -1311,8 +1313,17 @@ static __init void prepare_page_table(void)
 	for (addr = KASAN_SHADOW_END; addr < end; addr += PMD_SIZE)
 		pmd_clear(pmd_off_k(addr));
 #else
-	for (addr = 0; addr < end; addr += PMD_SIZE)
+	pr_info("swapper_pg_dir = %08x\n", (unsigned int)swapper_pg_dir);
+	pr_info("get_arch_pgd(swapper_pg_dir) = %08x\n", (unsigned int)virt_to_phys(swapper_pg_dir));
+	pr_info("idstart = 0x%08lx\n", idstart);
+	for (addr = 0; addr < end; addr += PMD_SIZE) {
+		if ((addr <= idstart) && ((addr + PMD_SIZE) > idstart)) {
+			pr_info("Not clearing PMD @0x%08lx-0x%08lx (pmd_off_k = %08x, value %08x)\n",
+				addr, addr + PMD_SIZE - 1, (unsigned int)pmd_off_k(addr), *pmd_off_k(addr));
+			continue;
+		}
 		pmd_clear(pmd_off_k(addr));
+	}
 #endif
 
 	/*
@@ -1406,10 +1417,12 @@ static void __init devicemaps_init(const struct machine_desc *mdesc)
 		 */
 		if (IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
 			if ((addr >= KERNEL_OFFSET) &&
-			    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE)))
+			    (addr < (KERNEL_OFFSET + KERNEL_SECTION_SIZE))) {
+				pr_info("Do NOT clear PMD at 0x%08llx\n", (unsigned long long)addr);
 				continue;
+			}
 		}
-		pr_debug("clear PMD at 0x%08llx\n", (unsigned long long)addr);
+		pr_info("clear PMD at 0x%08llx\n", (unsigned long long)addr);
 		pmd_clear(pmd_off_k(addr));
 	}
 
@@ -1526,7 +1539,7 @@ static void __init map_lowmem(void)
 	for_each_mem_range(i, &start, &end) {
 		struct map_desc map;
 
-		pr_debug("map lowmem start: 0x%08llx, end: 0x%08llx\n",
+		pr_info("map lowmem start: 0x%08llx, end: 0x%08llx\n",
 			 (long long)start, (long long)end);
 		if (end > arm_lowmem_limit)
 			end = arm_lowmem_limit;

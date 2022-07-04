@@ -7,13 +7,24 @@
 #include <linux/init.h>
 #include <asm/assembler.h>
 
+
+	.macro	kputc,val
+	mov	r0, \val
+	bl	printch
+	.endm
+
 /*
  * Realview/Versatile Express specific entry point for secondary CPUs.
  * This provides a "holding pen" into which all secondary cores are held
  * until we're ready for them to initialise.
  */
 ENTRY(versatile_secondary_startup)
- ARM_BE8(setend	be)
+ARM_BE8(setend	be)
+	kputc	#'B'
+	kputc	#'O'
+	kputc	#'O'
+	kputc	#'T'
+	kputc	#'\n'
 	mrc	p15, 0, r0, c0, c0, 5
 	bic	r0, #0xff000000
 	adr	r4, 1f
