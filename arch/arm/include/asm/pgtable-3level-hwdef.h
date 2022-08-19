@@ -92,6 +92,11 @@
 #define TTBR1_OFFSET	0
 #endif
 
+#if defined CONFIG_VMSPLIT_4G_4G
+/* #define TTBR1_SIZE	(((VMALLOC_START >> 30) - 1) << 16) */
+#define TTBR1_SIZE	0
+#else
 #define TTBR1_SIZE	(((PAGE_OFFSET >> 30) - 1) << 16)
+#endif
 
 #endif
