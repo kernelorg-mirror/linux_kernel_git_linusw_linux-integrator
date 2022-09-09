@@ -4,6 +4,7 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/qcom,gcc-msm8660.h>
+#include <dt-bindings/clock/qcom,mmcc-msm8660.h>
 #include <dt-bindings/soc/qcom,gsbi.h>
 
 / {
@@ -134,6 +135,13 @@
 			reg = <0x900000 0x4000>;
 			clocks = <&pxo_board>, <&cxo_board>;
 			clock-names = "pxo", "cxo";
+		};
+
+		mmcc: clock-controller@4000000 {
+			compatible = "qcom,mmcc-msm8660";
+			reg = <0x4000000 0x1000>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
 		};
 
 		gsbi1: gsbi@16000000 {
@@ -625,6 +633,92 @@
 			compatible = "qcom,tcsr-msm8660", "syscon";
 			reg = <0x1a400000 0x100>;
 		};
-	};
 
+
+		gpu: adreno@4300000 {
+			compatible = "qcom,adreno-220.0", "qcom,adreno";
+			reg = <0x04300000 0x20000>;
+			reg-names = "kgsl_3d0_reg_memory";
+			interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "kgsl_3d0_irq";
+			clock-names =
+			    "core_clk",
+			    "iface_clk",
+			    "mem_clk",
+			    "mem_iface_clk";
+			clocks =
+			    <&mmcc GFX3D_CLK>,
+			    <&mmcc GFX3D_AHB_CLK>,
+			    <&mmcc IMEM_AXI_CLK>,
+			    <&mmcc IMEM_AHB_CLK>;
+
+			qcom,gpu-pwrlevels {
+				compatible = "qcom,gpu-pwrlevels";
+				qcom,gpu-pwrlevel@0 {
+					qcom,gpu-freq = <266667000>;
+				};
+				qcom,gpu-pwrlevel@1 {
+					qcom,gpu-freq = <27000000>;
+				};
+			};
+		};
+
+		/*
+		 * Taken from:
+		 * arch/arm/mach-msm/devices-msm8x60.c
+		 * arch/arm/mach-msm/clock-8x60.c
+		 */
+		mdp: mdp@5100000 {
+			compatible = "qcom,mdp4";
+			reg = <0x05100000 0xf0000>;
+			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+			/* No LUT clock on this version of the block */
+			clocks = <&mmcc MDP_CLK>,
+				 <&mmcc MDP_AHB_CLK>,
+				 <&mmcc MDP_AXI_CLK>,
+				 <&mmcc HDMI_TV_CLK>,
+				 <&mmcc MDP_TV_CLK>,
+				 <&mmcc MDP_LCDC_CLK>;
+			clock-names = "core_clk",
+				      "iface_clk",
+				      "bus_clk",
+				      "hdmi_clk",
+				      "tv_clk",
+				      "lcdc_clk";
+
+			lvds-vccs-3p3v-supply = <&pm8058_l10>;
+
+			// FIXME: IOMMU?
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					mdp_lvds_out: endpoint {
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+					mdp_dsi1_out: endpoint {
+					};
+				};
+
+				port@2 {
+					reg = <2>;
+					mdp_dsi2_out: endpoint {
+					};
+				};
+
+				port@3 {
+					reg = <3>;
+					mdp_dtv_out: endpoint {
+					};
+				};
+			};
+		};
+	};
 };

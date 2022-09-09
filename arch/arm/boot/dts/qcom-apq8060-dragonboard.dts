@@ -159,6 +159,21 @@
 				};
 			};
 
+			/* SPI port connected to LCD and touch screen */
+			dragon_gsbi1_spi_pins: gsbi1_spi {
+				mux0 {
+					/* MOSI, MISO, CS_N, CLK */
+					pins = "gpio33", "gpio34", "gpio35", "gpio36";
+					function = "gsbi1";
+				};
+				pinconf {
+					/* MOSI, CS_N, CLK */
+					pins = "gpio33", "gpio35", "gpio36";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
 			dragon_gsbi3_i2c_pins: gsbi3_i2c {
 				mux {
 					pins = "gpio43", "gpio44";
@@ -469,6 +484,34 @@
 					color = <LED_COLOR_ID_GREEN>;
 					default-state = "on";
 					linux,default-trigger = "heartbeat";
+				};
+			};
+		};
+
+		gsbi@16000000 {
+			status = "ok";
+			qcom,mode = <GSBI_PROT_SPI>;
+
+			spi@16080000 {
+				status = "ok";
+				pinctrl-names = "default";
+				pinctrl-0 = <&dragon_gsbi1_spi_pins>;
+
+				/* AUO H361VL01 panel on CS0 or is it NT35582 WVGA??? */
+				panel: display@0 {
+					compatible = "auo,h361vl01";
+					reg = <0>;
+					/* 50 ns min period = 20 MHz */
+					spi-max-frequency = <10800000>;
+					spi-cpol;
+					spi-cpha;
+					vdd-supply = <&pm8901_l2>;
+
+					port {
+						panel_in: endpoint {
+							remote-endpoint = <&mdp_lvds_out>;
+						};
+					};
 				};
 			};
 		};
@@ -971,6 +1014,18 @@
 				};
 			};
 		};
+
+		mdp@5100000 {
+			status = "okay";
+			ports {
+				port@0 {
+					mdp_lvds_out: endpoint {
+						remote-endpoint = <&panel_in>;
+					};
+				};
+			};
+		};
+
 		amba {
 			/* Internal 3.69 GiB eMMC */
 			mmc@12400000 {
