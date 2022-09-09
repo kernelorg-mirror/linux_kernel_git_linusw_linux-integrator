@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: GPL-2.0
+#ifndef _DT_BINDINGS_RESET_MSM_MMCC_8660_H
+#define _DT_BINDINGS_RESET_MSM_MMCC_8660_H
+
+#define IJPEG_AXI_RESET		0
+#define IMEM_AXI_RESET		1
+#define MDP_AXI_RESET		2
+#define VCODEC_AXI_RESET	3
+#define VFE_AXI_RESET		4
+#define ROT_AXI_RESET		5
+#define VPE_AXI_RESET		6
+#define AMP_AHB_RESET		7
+#define CSI0_AHB_RESET		8
+#define CSI1_AHB_RESET		9
+#define DSI_M_AHB_RESET		10
+#define DSI_S_AHB_RESET		11
+#define GFX2D0_AHB_RESET	12
+#define GFX2D1_AHB_RESET	13
+#define GFX3D_AHB_RESET		14
+#define HDMI_M_AHB_RESET	15
+#define HDMI_S_AHB_RESET	16
+#define IJPEG_AHB_RESET		17
+#define IMEM_AHB_RESET		18
+#define JPEGD_AHB_RESET		19
+#define MDP_AHB_RESET		20
+#define ROT_AHB_RESET		21
+#define TV_ENC_AHB_RESET	22
+#define VCODEC_AHB_RESET	23
+#define VFE_AHB_RESET		24
+#define VPE_AHB_RESET		25
+#define MDP_RESET		26
+#define MDP_VSYNC_RESET		27
+#define MDP_PIXEL_RESET		28
+#define ROT_RESET		29
+#define GFX3D_RESET		30
+#define CSI0_RESET		31
+#define CSI1_RESET		32
+#define DSI_BYTE_RESET		33
+#define TV_ENC_RESET		34
+#define MDP_TV_RESET		35
+#define HDMI_TV_RESET		36
+#define HDMI_APP_RESET		37
+#define VCODEC_RESET		38
+#define VPE_RESET		39
+#define VFE_RESET		40
+#define CSI0_VFE_RESET		41
+#define CSI1_VFE_RESET		42
+
+#endif
