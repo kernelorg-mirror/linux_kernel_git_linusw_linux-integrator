@@ -180,6 +180,16 @@ config MSM_GCC_8660
 	  Say Y if you want to use peripheral devices such as UART, SPI,
 	  i2c, USB, SD/eMMC, etc.
 
+config MSM_MMCC_8660
+	tristate "MSM8660 Multimedia Clock Controller"
+	select MSM_GCC_8660
+	depends on COMMON_CLK_QCOM
+	help
+	  Support for the multimedia clock controller on MSM8660 and APQ8060
+	  devices.
+	  Say Y if you want to support multimedia devices such as display,
+	  graphics, video encode/decode, camera, etc.
+
 config MSM_GCC_8916
 	tristate "MSM8916 Global Clock Controller"
 	select QCOM_GDSC
