@@ -366,6 +366,7 @@ static int bprm_mm_init(struct linux_binprm *bprm)
 	int err;
 	struct mm_struct *mm = NULL;
 
+	pr_info("Allocate new MM context for bprm %s\n", bprm->filename);
 	bprm->mm = mm = mm_alloc();
 	err = -ENOMEM;
 	if (!mm)
