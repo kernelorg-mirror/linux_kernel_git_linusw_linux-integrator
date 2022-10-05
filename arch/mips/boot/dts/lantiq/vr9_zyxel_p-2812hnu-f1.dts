@@ -5,6 +5,10 @@
 	compatible = "zyxel,p-2812hnu-f1", "zyxel,p-2812hnu", "lantiq,xway", "lantiq,vr9";
 	model = "ZyXEL P-2812HNU-F1";
 
+	chosen {
+		bootargs = "root=/dev/sda1 rw rootwait";
+	};
+
 	leds {
 		usb1 {
 			label = "green:usb1";
