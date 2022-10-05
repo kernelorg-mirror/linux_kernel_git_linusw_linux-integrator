@@ -46,6 +46,17 @@ config DT_EASY50712
 	bool "Easy50712"
 	depends on SOC_XWAY
 	select BUILTIN_DTB
+
+config DT_ZYXEL_P_2812HNU_F1
+	bool "Zyxel P-2812HNU-F1"
+	depends on SOC_XWAY
+	select BUILTIN_DTB
+
+config DT_ZYXEL_P_2812HNU_F3
+	bool "Zyxel P-2812HNU-F3"
+	depends on SOC_XWAY
+	select BUILTIN_DTB
+
 endchoice
 
 config PCI_LANTIQ
