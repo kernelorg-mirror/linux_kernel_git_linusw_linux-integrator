@@ -288,6 +288,16 @@ config ARM_KERNEL_IN_VMALLOC
 	  mapping to userspace of the kernel for system calls and task
 	  switching.
 
+config ARM_KERNEL_SEPARATION
+	bool "Unmap the userspace address space when executing the kernel"
+	depends on ARM_KERNEL_IN_VMALLOC
+	depends on ARM_LPAE
+	help
+	  This option will make the kernel unmap the kernel memory allocation
+	  pool when executing userspace processes. The kernel TEXT, DATA
+	  and BSS will still be visible to userspace, but no dynamic
+	  allocations.
+
 config PHYS_OFFSET
 	hex "Physical address of main memory" if MMU
 	depends on !ARM_PATCH_PHYS_VIRT || !AUTO_ZRELADDR
