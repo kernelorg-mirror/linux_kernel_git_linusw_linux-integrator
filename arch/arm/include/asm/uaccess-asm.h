@@ -7,6 +7,8 @@
 #include <asm/domain.h>
 #include <asm/page.h>
 #include <asm/thread_info.h>
+#include <asm/assembler.h>
+#include <asm/proc-fns.h>
 
 	.macro	csdb
 #ifdef CONFIG_THUMB2_KERNEL
@@ -15,6 +17,47 @@
 	.inst	0xe320f014
 #endif
 	.endm
+
+#ifdef CONFIG_ARM_KERNEL_SEPARATION
+/*
+ * Switch between the kernel and userspace virtual memory space when
+ * doing kernel/userspace address space separation.
+ */
+	.macro  kernel_vm_context, rd:req
+	mrc	p15, 0, \rd, c2, c0, 1  @ read TTBR1
+	mcr	p15, 0, \rd, c2, c0, 0  @ set TTBR0
+	instr_sync
+	.endm
+
+	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
+	/*
+	 * Restore TTBR0 to userspace PGD.
+	 * We need to be in kernel memory context when calling this
+	 * function, as the MM struct will be allocated by the kernel.
+	 *
+	 * This is pretty much emulating:
+	 * struct mm_struct *mm = current->active_mm;
+	 * cpu_switch_mm(mm, mm->pgd);
+	 */
+	act_mm	\tmp0
+#ifndef __ARMEB__
+	ldr	\tmp1, [\tmp0, #MM_PGD]
+	ldr	\tmp2, [\tmp0, #(MM_PGD + 4)]
+#else
+	ldr	\tmp2, [\tmp0, #MM_PGD]
+	ldr	\tmp1, [\tmp0, #(MM_PGD + 4)]
+#endif
+	/* After this we cannot reference kernel allocations! */
+	mcrr	p15, 0, \tmp1, \tmp2, c2  @ set TTBR0
+	instr_sync
+	.endm
+#else
+	/* Stub macros */
+	.macro  kernel_vm_context, rd:req
+	.endm
+	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
+	.endm
+#endif
 
 	.macro check_uaccess, addr:req, size:req, limit:req, tmp:req, bad:req
 #ifndef CONFIG_CPU_USE_DOMAINS

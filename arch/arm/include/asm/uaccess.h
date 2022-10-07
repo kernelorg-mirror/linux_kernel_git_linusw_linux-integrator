@@ -17,8 +17,17 @@
 #include <asm/pgtable.h>
 #include <asm/proc-fns.h>
 #include <asm/compiler.h>
-
+#include <asm/cp15.h>
 #include <asm/extable.h>
+
+/* This should only ever be used on LPAE implied from address space sep */
+#ifdef CONFIG_ARM_KERNEL_SEPARATION
+
+#define TTBR0	__ACCESS_CP15_64(0, c2)
+#define TTBR1	__ACCESS_CP15_64(1, c2)
+extern u64 current_user_ttbr(void) __attribute__((const));
+
+#endif
 
 /*
  * These two functions allow hooking accesses to userspace to increase
@@ -26,7 +35,30 @@
  * perform such accesses (eg, via list poison values) which could then
  * be exploited for priviledge escalation.
  */
-#if defined(CONFIG_CPU_SW_DOMAIN_PAN)
+#if defined(CONFIG_ARM_KERNEL_SEPARATION)
+
+static __always_inline unsigned int uaccess_save_and_enable(void)
+{
+	/*
+	 * Intended semantics: switch to the userspace MM context (enable
+	 * userspace), then return (save) the previous kernelspace TTBR0
+	 * value.
+	 */
+	u64 user_ttbr, kernel_ttbr;
+
+	user_ttbr = current_user_ttbr();
+	kernel_ttbr = read_sysreg(TTBR1);
+	write_sysreg(user_ttbr, TTBR0);
+
+	return kernel_ttbr;
+}
+
+static __always_inline void uaccess_restore(unsigned int flags)
+{
+	write_sysreg(flags, TTBR0);
+}
+
+#elif defined(CONFIG_CPU_SW_DOMAIN_PAN)
 
 static __always_inline unsigned int uaccess_save_and_enable(void)
 {
@@ -256,7 +288,7 @@ extern int __put_user_8(void *, unsigned long long);
 
 #include <asm-generic/access_ok.h>
 
-#ifdef CONFIG_CPU_SPECTRE
+#if defined(CONFIG_CPU_SPECTRE) || defined(CONFIG_ARM_KERNEL_SEPARATION)
 /*
  * When mitigating Spectre variant 1, it is not worth fixing the non-
  * verifying accessors, because we need to add verification of the
@@ -375,7 +407,7 @@ do {									\
 	__pu_err;							\
 })
 
-#ifdef CONFIG_CPU_SPECTRE
+#if defined(CONFIG_CPU_SPECTRE) || defined(CONFIG_ARM_KERNEL_SEPARATION)
 /*
  * When mitigating Spectre variant 1.1, all accessors need to include
  * verification of the address space.
@@ -530,16 +562,46 @@ do {									\
 #ifdef CONFIG_MMU
 extern unsigned long __must_check
 arm_copy_from_user(void *to, const void __user *from, unsigned long n);
+extern bool is_vmalloc_addr(const void *x);
+
+#define my_copy_from_user_nofault_loop(dst, src, len, type, err_label)  \
+        while (len >= sizeof(type)) {                                   \
+                __get_kernel_nofault(dst, src, type, err_label);	\
+                dst += sizeof(type);                                    \
+                src += sizeof(type);                                    \
+                len -= sizeof(type);                                    \
+        }
 
 static inline unsigned long __must_check
 raw_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	unsigned int __ua_flags;
+	unsigned long align = (unsigned long)from | (unsigned long)to;
+
+	pr_debug("%s %08x -> %08x, %08x bytes\n", __func__, (u32)from, (u32)to, (u32)n);
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_SEPARATION) && is_vmalloc_addr(to)) {
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_from_user(to, from, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
 
 	__ua_flags = uaccess_save_and_enable();
-	n = arm_copy_from_user(to, from, n);
+
+	if (!(align & 7))
+		my_copy_from_user_nofault_loop(to, from, n, u64, Efault);
+	if (!(align & 3))
+		my_copy_from_user_nofault_loop(to, from, n, u32, Efault);
+	if (!(align & 1))
+		my_copy_from_user_nofault_loop(to, from, n, u16, Efault);
+	my_copy_from_user_nofault_loop(to, from, n, u8, Efault);
+
 	uaccess_restore(__ua_flags);
 	return n;
+Efault:
+	pr_err("FAULT\n");
+	uaccess_restore(__ua_flags);
+	return -EFAULT;
 }
 
 extern unsigned long __must_check
@@ -547,18 +609,58 @@ arm_copy_to_user(void __user *to, const void *from, unsigned long n);
 extern unsigned long __must_check
 __copy_to_user_std(void __user *to, const void *from, unsigned long n);
 
+#define my_copy_from_kernel_nofault_loop(dst, src, len, type, err_label) \
+	while (len >= sizeof(type)) {                                   \
+		__put_kernel_nofault(dst, src, type, err_label);	\
+                dst += sizeof(type);                                    \
+		src += sizeof(type);                                    \
+		len -= sizeof(type);                                    \
+	}
+
 static inline unsigned long __must_check
 raw_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-#ifndef CONFIG_UACCESS_WITH_MEMCPY
 	unsigned int __ua_flags;
+	unsigned long align = (unsigned long)from | (unsigned long)to;
+	u8 bounce[512];
+
+	pr_debug("%s %08x -> %08x, %08x bytes\n", __func__, (u32)from, (u32)to, (u32)n);
+
+	if (IS_ENABLED(CONFIG_ARM_KERNEL_SEPARATION) && is_vmalloc_addr(from)) {
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_to_user(to, from, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
+
+	/* Copy to VMALLOC-mapped stack */
+	if (n <= 512) {
+		pr_debug("Bounce to %08x\n", (u32)bounce);
+		memcpy(bounce, from, n);
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_to_user(to, bounce, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
+
+	/* Elaborate page copy */
 	__ua_flags = uaccess_save_and_enable();
-	n = arm_copy_to_user(to, from, n);
+
+	if (!(align & 7))
+		my_copy_from_kernel_nofault_loop(to, from, n, u64, Efault);
+	if (!(align & 3))
+		my_copy_from_kernel_nofault_loop(to, from, n, u32, Efault);
+	if (!(align & 1))
+		my_copy_from_kernel_nofault_loop(to, from, n, u16, Efault);
+	my_copy_from_kernel_nofault_loop(to, from, n, u8, Efault);
+
 	uaccess_restore(__ua_flags);
+
 	return n;
-#else
-	return arm_copy_to_user(to, from, n);
-#endif
+Efault:
+	pr_info("FAULT\n");
+	uaccess_restore(__ua_flags);
+	return -EFAULT;
 }
 
 extern unsigned long __must_check
