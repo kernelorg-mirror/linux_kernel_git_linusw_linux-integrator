@@ -195,6 +195,10 @@ ENDPROC(__und_invalid)
 	@
 	stmia	r7, {r2 - r6}
 
+	.if \uaccess
+	kernel_vm_context r0
+	.endif
+
 	get_thread_info tsk
 	uaccess_entry tsk, r0, r1, r2, \uaccess
 
@@ -211,7 +215,7 @@ __dabt_svc:
 	mov	r2, sp
 	dabt_helper
  THUMB(	ldr	r5, [sp, #S_PSR]	)	@ potentially updated CPSR
-	svc_exit r5				@ return from exception
+	svc_exit r5 uaccess=0			@ return from exception
  UNWIND(.fnend		)
 ENDPROC(__dabt_svc)
 
@@ -357,6 +361,9 @@ ENDPROC(__fiq_abt)
  ARM(	stmib	sp, {r1 - r12}	)
  THUMB(	stmia	sp, {r0 - r12}	)
 
+	/* FIXME: won't be needed if uaccess_disable can cal kernel_vm_context */
+	kernel_vm_context r0
+
  ATRAP(	mrc	p15, 0, r7, c1, c0, 0)
  ATRAP(	ldr_va	r8, cr_alignment)
 
@@ -425,6 +432,7 @@ __dabt_usr:
 	kuser_cmpxchg_check
 	mov	r2, sp
 	dabt_helper
+	/* This calls ret_from_user which restores TTBR0 */
 	b	ret_from_exception
  UNWIND(.fnend		)
 ENDPROC(__dabt_usr)
@@ -436,6 +444,7 @@ __irq_usr:
 	irq_handler from_user=1
 	get_thread_info tsk
 	mov	why, #0
+	/* This restores TTBR0 */
 	b	ret_to_user_from_irq
  UNWIND(.fnend		)
 ENDPROC(__irq_usr)
@@ -477,6 +486,7 @@ __und_usr:
 	@ r4 = PC value for the faulting instruction
 	@ lr = 32-bit undefined instruction function
 	badr	lr, __und_usr_fault_32
+	/* TODO: restore TTBR0 (in call_fpe?) */
 	b	call_fpe
 
 __und_usr_thumb:

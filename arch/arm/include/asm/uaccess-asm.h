@@ -7,6 +7,8 @@
 #include <asm/domain.h>
 #include <asm/memory.h>
 #include <asm/thread_info.h>
+#include <asm/assembler.h>
+#include <asm/proc-fns.h>
 
 	.macro	csdb
 #ifdef CONFIG_THUMB2_KERNEL
@@ -14,6 +16,38 @@
 #else
 	.inst	0xe320f014
 #endif
+	.endm
+
+/*
+ * Switch to kernel virtual memory context on 4G-by-4G split
+ */
+	/* FIXME: eventually only do this switch if 4G/4G is enabled */
+	.macro  kernel_vm_context, rd:req
+	mrc	p15, 0, \rd, c2, c0, 1  @ read TTBR1
+	mcr	p15, 0, \rd, c2, c0, 0  @ set TTBR0
+	instr_sync
+	.endm
+
+	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
+	/*
+	 * Restore TTBR0 to userspace PGD
+	 * FIXME: elif defined(CONFIG_VMSPLIT_4G_4G)
+	 *
+	 * This is pretty much emulating:
+	 * struct mm_struct *mm = current->active_mm;
+	 * cpu_switch_mm(mm, mm->pgd);
+	 */
+	act_mm	\tmp0
+#ifndef __ARMEB__
+	ldr	\tmp1, [\tmp0, #MM_PGD]
+	ldr	\tmp2, [\tmp0, #(MM_PGD + 4)]
+#else
+	ldr	\tmp2, [\tmp0, #MM_PGD]
+	ldr	\tmp1, [\tmp0, #(MM_PGD + 4)]
+#endif
+	// Just call cpu_v7_switch_mm()?
+	mcrr	p15, 0, \tmp1, \tmp2, c2  @ set TTBR0
+	instr_sync
 	.endm
 
 	.macro check_uaccess, addr:req, size:req, limit:req, tmp:req, bad:req
@@ -50,6 +84,12 @@
 	.if	\isb
 	instr_sync
 	.endif
+#else
+	/*
+	 * FIXME: elseif defined(CONFIG_VMSPLIT_4G_4G)
+	 * Doesn't work because sp is not at the right place!
+	 */
+	//kernel_vm_context \tmp
 #endif
 	.endm
 
@@ -64,6 +104,12 @@
 	.if	\isb
 	instr_sync
 	.endif
+#else
+	/*
+	 * FIXME: elseif defined(CONFIG_VMSPLIT_4G_4G)
+	 * Doesn't work because sp is not at the right place!
+	 */
+	//usr_vm_context \tmp
 #endif
 	.endm
 
