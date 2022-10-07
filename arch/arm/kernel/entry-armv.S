@@ -195,6 +195,10 @@ ENDPROC(__und_invalid)
 	@
 	stmia	r7, {r2 - r6}
 
+	.if \uaccess
+	kernel_vm_context r0
+	.endif
+
 	get_thread_info tsk
 	uaccess_entry tsk, r0, r1, r2, \uaccess
 
@@ -211,13 +215,13 @@ __dabt_svc:
 	mov	r2, sp
 	dabt_helper
  THUMB(	ldr	r5, [sp, #S_PSR]	)	@ potentially updated CPSR
-	svc_exit r5				@ return from exception
+	svc_exit rpsr=r5, uaccess=0		@ return from exception
  UNWIND(.fnend		)
 ENDPROC(__dabt_svc)
 
 	.align	5
 __irq_svc:
-	svc_entry
+	svc_entry uaccess=0
 	irq_handler from_user=0
 
 #ifdef CONFIG_PREEMPTION
@@ -229,7 +233,7 @@ __irq_svc:
 	blne	svc_preempt
 #endif
 
-	svc_exit r5, irq = 1			@ return from exception
+	svc_exit rpsr=r5, irq=1, uaccess=0	@ return from exception
  UNWIND(.fnend		)
 ENDPROC(__irq_svc)
 
@@ -264,9 +268,9 @@ __und_svc:
 	@ If a kprobe is about to simulate a "stmdb sp..." instruction,
 	@ it obviously needs free stack space which then will belong to
 	@ the saved context.
-	svc_entry MAX_STACK_SIZE
+	svc_entry uaccess=0, MAX_STACK_SIZE
 #else
-	svc_entry
+	svc_entry uaccess=0
 #endif
 
 	mov	r1, #4				@ PC correction to apply
@@ -278,25 +282,25 @@ __und_svc:
 __und_svc_finish:
 	get_thread_info tsk
 	ldr	r5, [sp, #S_PSR]		@ Get SVC cpsr
-	svc_exit r5				@ return from exception
+	svc_exit rpsr=r5, uaccess=0		@ return from exception
  UNWIND(.fnend		)
 ENDPROC(__und_svc)
 
 	.align	5
 __pabt_svc:
-	svc_entry
+	svc_entry uaccess=0
 	mov	r2, sp				@ regs
 	pabt_helper
-	svc_exit r5				@ return from exception
+	svc_exit rpsr=r5, uaccess=0		@ return from exception
  UNWIND(.fnend		)
 ENDPROC(__pabt_svc)
 
 	.align	5
 __fiq_svc:
-	svc_entry trace=0
+	svc_entry trace=0, uaccess=0
 	mov	r0, sp				@ struct pt_regs *regs
 	bl	handle_fiq_as_nmi
-	svc_exit_via_fiq
+	svc_exit_via_fiq uaccess=0
  UNWIND(.fnend		)
 ENDPROC(__fiq_svc)
 
@@ -356,6 +360,9 @@ ENDPROC(__fiq_abt)
 	sub	sp, sp, #PT_REGS_SIZE
  ARM(	stmib	sp, {r1 - r12}	)
  THUMB(	stmia	sp, {r0 - r12}	)
+
+	/* FIXME: won't be needed if uaccess_disable can cal kernel_vm_context */
+	kernel_vm_context r0
 
  ATRAP(	mrc	p15, 0, r7, c1, c0, 0)
  ATRAP(	ldr_va	r8, cr_alignment)
@@ -425,6 +432,7 @@ __dabt_usr:
 	kuser_cmpxchg_check
 	mov	r2, sp
 	dabt_helper
+	/* This calls ret_from_user which restores TTBR0 */
 	b	ret_from_exception
  UNWIND(.fnend		)
 ENDPROC(__dabt_usr)
@@ -436,6 +444,7 @@ __irq_usr:
 	irq_handler from_user=1
 	get_thread_info tsk
 	mov	why, #0
+	/* This restores TTBR0 */
 	b	ret_to_user_from_irq
  UNWIND(.fnend		)
 ENDPROC(__irq_usr)
