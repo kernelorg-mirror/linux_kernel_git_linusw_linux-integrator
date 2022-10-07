@@ -75,12 +75,25 @@ void a15_erratum_get_cpumask(int this_cpu, struct mm_struct *mm,
 #endif
 
 #ifdef CONFIG_ARM_LPAE
+// TODO: #if defined(CONFIG_ARM_LPAE) || defined(CONFIG_VMSPLIT_4G_4G)
 /*
  * With LPAE, the ASID and page tables are updated atomicly, so there is
  * no need for a reserved set of tables (the active ASID tracking prevents
  * any issues across a rollover).
  */
 #define cpu_set_reserved_ttbr0()
+
+/*
+ * Combine the ASID with the PGD to form the current TTBR value for
+ * userspace.
+ */
+extern u64 current_user_ttbr(void) {
+	struct mm_struct *mm = current->active_mm;
+
+	/* The context ID is in the upper 48 bits */
+	return atomic64_read(&mm->context.id) << 48 | virt_to_phys(mm->pgd);
+}
+
 #else
 static void cpu_set_reserved_ttbr0(void)
 {
@@ -272,5 +285,7 @@ void check_and_switch_context(struct mm_struct *mm, struct task_struct *tsk)
 	raw_spin_unlock_irqrestore(&cpu_asid_lock, flags);
 
 switch_mm_fastpath:
-	cpu_switch_mm(mm->pgd, mm);
+	// This will happen when we transition to userspace.
+	// if(!IS_ENABLED(CONFIG_VMSPLIT_4G_4G))
+	// cpu_switch_mm(mm->pgd, mm);
 }
