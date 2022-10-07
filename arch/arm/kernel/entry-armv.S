@@ -30,6 +30,15 @@
 #include <asm/probes.h>
 
 /*
+ * Switch to kernel virtual memory context on 4G-by-4G split
+ */
+	.macro	kernel_vm_context
+	/* FIXME: eventually only do this switch if 4G/4G is enabled */
+	mrc	p15, 0, ip, c2, c0, 1	@ read TTBR1
+	mcr	p15, 0, ip, c2, c0, 0	@ set TTBR0
+	.endm
+
+/*
  * Interrupt handling.
  */
 	.macro	irq_handler, from_user:req
@@ -53,6 +62,8 @@
 0:
 	.endif
 
+	/* This is when \from_user == 1, i.e. we were in user context */
+	kernel_vm_context
 	mov_l	r0, generic_handle_arch_irq
 	bl	call_with_stack
 1:
@@ -137,6 +148,9 @@ common_invalid:
 	stmia	r0, {r5 - r7}		@ lr_<exception>,
 					@ cpsr_<exception>, "old_r0"
 
+	/* CHECKME: no distinction between kernelspace and userspace? */
+	kernel_vm_context
+
 	mov	r0, sp
 	b	bad_mode
 ENDPROC(__und_invalid)
@@ -194,6 +208,10 @@ ENDPROC(__und_invalid)
 	@  r6 - orig_r0 (see pt_regs definition in ptrace.h)
 	@
 	stmia	r7, {r2 - r6}
+
+	.if \uaccess
+	kernel_vm_context
+	.endif
 
 	get_thread_info tsk
 	uaccess_entry tsk, r0, r1, r2, \uaccess
@@ -296,6 +314,7 @@ __fiq_svc:
 	svc_entry trace=0
 	mov	r0, sp				@ struct pt_regs *regs
 	bl	handle_fiq_as_nmi
+	/* TODO: restore TTBR0 */
 	svc_exit_via_fiq
  UNWIND(.fnend		)
 ENDPROC(__fiq_svc)
@@ -336,6 +355,7 @@ __fiq_abt:
  THUMB( mov	r0, #SVC_MODE | PSR_I_BIT | PSR_F_BIT )
  THUMB( msr	cpsr_c, r0 )
 
+	/* TODO: restore TTBR0 */
 	svc_exit_via_fiq
  UNWIND(.fnend		)
 ENDPROC(__fiq_abt)
@@ -382,6 +402,7 @@ ENDPROC(__fiq_abt)
 
 	.if \uaccess
 	uaccess_disable ip
+	kernel_vm_context
 	.endif
 
 	@ Enable the alignment trap while in kernel mode
@@ -399,6 +420,7 @@ ENDPROC(__fiq_abt)
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_off
 #endif
+	/* TODO: restore TTBR0 */
 	ct_user_exit save = 0
 	.endif
 	.endm
@@ -425,6 +447,7 @@ __dabt_usr:
 	kuser_cmpxchg_check
 	mov	r2, sp
 	dabt_helper
+	/* TODO: restore TTBR0 (in ret_from_exception?) */
 	b	ret_from_exception
  UNWIND(.fnend		)
 ENDPROC(__dabt_usr)
@@ -436,6 +459,7 @@ __irq_usr:
 	irq_handler from_user=1
 	get_thread_info tsk
 	mov	why, #0
+	/* TODO: restore TTBR0 (in ret_to_user_from_irq?) */
 	b	ret_to_user_from_irq
  UNWIND(.fnend		)
 ENDPROC(__irq_usr)
@@ -477,6 +501,7 @@ __und_usr:
 	@ r4 = PC value for the faulting instruction
 	@ lr = 32-bit undefined instruction function
 	badr	lr, __und_usr_fault_32
+	/* TODO: restore TTBR0 (in call_fpe?) */
 	b	call_fpe
 
 __und_usr_thumb:
