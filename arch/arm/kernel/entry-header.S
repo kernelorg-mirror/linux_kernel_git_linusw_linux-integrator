@@ -199,7 +199,7 @@
 	.endm
 
 
-	.macro	svc_exit, rpsr, irq = 0
+	.macro	svc_exit, rpsr, irq = 0, uaccess = 1
 	.if	\irq != 0
 	@ IRQs already off
 #ifdef CONFIG_TRACE_IRQFLAGS
@@ -218,6 +218,23 @@
 #endif
 	.endif
 	uaccess_exit tsk, r0, r1
+
+	@ Get the contents of the upper word of TTBR0.
+	mrrc	p15, 0, r0, r1, c2
+
+	@ Check ASID in bits 48..63 to see if we are in kernel memory context
+	@ or in some thread memory context. If we are in kernel context
+	@ (ASID == 0), do nothing (context is fine already) else switch to the
+	@ userspace memory context.
+	mov	r2, #0xffff
+#ifndef __ARMEB__
+	and	r1, r1, r2, lsl #16
+#else
+	and	r0, r0, r2, lsl #16
+#endif
+	beq	1f			@ if zero stay in kernel context
+	usr_vm_context r0, r1, r2	@ switch to userspace process
+1:
 
 #ifndef CONFIG_THUMB2_KERNEL
 	@ ARM mode SVC restore
@@ -260,8 +277,11 @@
 	@ and the handlers cannot call into the scheduler (meaning the value
 	@ on the stack remains correct).
 	@
-	.macro  svc_exit_via_fiq
+	.macro  svc_exit_via_fiq, uaccess = 1
 	uaccess_exit tsk, r0, r1
+	.if \uaccess
+	usr_vm_context r0, r1, r2
+	.endif
 #ifndef CONFIG_THUMB2_KERNEL
 	@ ARM mode restore
 	mov	r0, sp
@@ -300,11 +320,20 @@ ALT_UP_B(.L1_\@)
 	@ The TLS register update is deferred until return to user space so we
 	@ can use it for other things while running in the kernel
 	mrc	p15, 0, r1, c13, c0, 3		@ get current_thread_info pointer
-	ldr	r1, [r1, #TI_TP_VALUE]
-	mcr	p15, 0, r1, c13, c0, 3		@ set TLS register
+	ldr	r4, [r1, #TI_TP_VALUE]
+
+	/*
+	 * Here we have just switched c13 to the user thread context, from that
+	 * we will now look up the MM context and set up the translation table
+	 * base for this userspace process. After this point we can no longer
+	 * reference kernel memory outside of VMALLOC.
+	 */
+	usr_vm_context r1, r2, r3
+
+
+	mcr	p15, 0, r4, c13, c0, 3		@ set TLS register
 .L1_\@:
 #endif
-
 	uaccess_enable r1, isb=0
 #ifndef CONFIG_THUMB2_KERNEL
 	@ ARM mode restore

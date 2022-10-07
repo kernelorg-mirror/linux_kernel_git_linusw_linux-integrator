@@ -43,6 +43,8 @@ int main(void)
   DEFINE(TSK_STACK_CANARY,	offsetof(struct task_struct, stack_canary));
 #endif
   BLANK();
+  DEFINE(MM_PGD,		offsetof(struct mm_struct, pgd));
+  BLANK();
   DEFINE(TI_FLAGS,		offsetof(struct thread_info, flags));
   DEFINE(TI_PREEMPT,		offsetof(struct thread_info, preempt_count));
   DEFINE(TI_CPU,		offsetof(struct thread_info, cpu));
