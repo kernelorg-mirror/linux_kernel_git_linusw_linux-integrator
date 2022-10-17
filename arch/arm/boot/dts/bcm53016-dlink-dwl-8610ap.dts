@@ -17,6 +17,10 @@
 		      <0x88000000 0x08000000>;
 	};
 
+	chosen {
+		bootargs = "console=ttyS0,115200n8 ubi.mtd=3 root=ubi0:rootfs rw rootfstype=ubifs";
+	};
+
 	leds {
 		compatible = "gpio-leds";
 
