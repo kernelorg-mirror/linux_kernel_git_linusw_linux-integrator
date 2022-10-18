@@ -11,5 +11,6 @@
 extern pgd_t *idmap_pgd;
 
 void setup_mm_for_reboot(void);
+void dump_pagetable(pgd_t *pgd);
 
 #endif	/* __ASM_IDMAP_H */

@@ -27,6 +27,7 @@ static void idmap_add_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 	pmd_t *pmd;
 	unsigned long next;
 
+	pr_info("Add LPAE PMD for address %08lx, pud = %08x\n", addr, (u32)pud);
 	if (pud_none_or_clear_bad(pud) || (pud_val(*pud) & L_PGD_SWAPPER)) {
 		pmd = pmd_alloc_one(&init_mm, addr);
 		if (!pmd) {
@@ -49,6 +50,8 @@ static void idmap_add_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 		next = pmd_addr_end(addr, end);
 		*pmd = __pmd((addr & PMD_MASK) | prot);
 		flush_pmd_entry(pmd);
+		pr_info("Add LPAE PMD for address %08lx, pmd = %08x, *pmd = %08x\n",
+			addr, (u32)pmd, (u32)*pmd);
 	} while (pmd++, addr = next, addr != end);
 }
 #else	/* !CONFIG_ARM_LPAE */
@@ -74,6 +77,8 @@ static void idmap_add_pud(pgd_t *pgd, unsigned long addr, unsigned long end,
 
 	do {
 		next = pud_addr_end(addr, end);
+		pr_info("Use P4D/PUD entry for address %08lx: p4d = %08x, pud = %08x\n",
+			addr, (u32)p4d, (u32)pud);
 		idmap_add_pmd(pud, addr, next, prot);
 	} while (pud++, addr = next, addr != end);
 }
@@ -96,11 +101,45 @@ static void identity_mapping_add(pgd_t *pgd, const char *text_start,
 	pgd += pgd_index(addr);
 	do {
 		next = pgd_addr_end(addr, end);
+		pr_info("Use PGD entry for address %08lx: pgd_index() = %lu, pgd size = %d bytes, pgd = %08x, *pgd = %08x\n",
+			addr, pgd_index(addr), sizeof(pgd_t), (u32)pgd, (u32)*pgd);
 		idmap_add_pud(pgd, addr, next, prot);
 	} while (pgd++, addr = next, addr != end);
 }
 
 extern char  __idmap_text_start[], __idmap_text_end[];
+
+/*
+ * If you lose printk messages ("dropped...") then increase the kernel
+ * log buffer size CONFIG_LOG_BUF_SHIFT
+ */
+void dump_pagetable(pgd_t *pgd)
+{
+	pgd_t *tmp;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	int i, j;
+	u32 addr = 0;
+
+	pr_info("LPAE PAGE TABLE:\n");
+
+	for (i = 0; i < 4; i++) {
+		tmp = pgd + pgd_index(addr);
+		pr_info("pgd%d @%08x = 0x%016llx\n", i, (u32)tmp, *tmp);
+		for (j = 0; j < PTRS_PER_PMD; j++) {
+			p4d = p4d_offset(tmp, addr);
+			pud = pud_offset(p4d, addr);
+			if (pud_none_or_clear_bad(pud)) {
+				pr_info("  p4d/pud/pmd%d for address %08x UNDEFINED\n", j, addr);
+			} else {
+				pmd = pmd_offset(pud, addr);
+				pr_info("  p4d/pud/pmd%d @%08x = %016llx, address %08x\n", j, (u32)pmd, *pmd, addr);
+			}
+			addr += PMD_SIZE;
+		}
+	}
+}
 
 static int __init init_static_idmap(void)
 {
@@ -108,8 +147,13 @@ static int __init init_static_idmap(void)
 	if (!idmap_pgd)
 		return -ENOMEM;
 
+	pr_info("Created LPAE PGD pgd = %08x, *pgd = %08x\n",
+		(u32)idmap_pgd, (u32)*idmap_pgd);
+
 	identity_mapping_add(idmap_pgd, __idmap_text_start,
 			     __idmap_text_end, 0);
+
+	//dump_pagetable(idmap_pgd);
 
 	/* Flush L1 for the hardware to see this page table content */
 	if (!(elf_hwcap & HWCAP_LPAE))
