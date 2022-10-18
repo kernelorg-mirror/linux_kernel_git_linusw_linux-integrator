@@ -150,7 +150,11 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 #endif
 
 #ifdef CONFIG_MMU
+
 	secondary_data.pgdir = virt_to_phys(idmap_pgd);
+	pr_info("Assign IDMAP pgd at = %08x, physical = %08x, *pgd = %08x\n",
+		(u32)idmap_pgd, (u32)secondary_data.pgdir, (u32)*idmap_pgd);
+	dump_pagetable(idmap_pgd);
 	secondary_data.swapper_pg_dir = get_arch_pgd(swapper_pg_dir);
 #endif
 	secondary_data.task = idle;
