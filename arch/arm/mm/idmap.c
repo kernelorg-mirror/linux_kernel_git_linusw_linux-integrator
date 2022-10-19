@@ -150,6 +150,8 @@ static int __init init_static_idmap(void)
 	pr_info("Created LPAE PGD pgd = %08x, *pgd = %08x\n",
 		(u32)idmap_pgd, (u32)*idmap_pgd);
 
+	identity_mapping_add(idmap_pgd, 0x80000000,
+			     0x801fffff, 0);
 	identity_mapping_add(idmap_pgd, __idmap_text_start,
 			     __idmap_text_end, 0);
 
