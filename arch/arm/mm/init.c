@@ -191,10 +191,15 @@ void __init arm_memblock_init(const struct machine_desc *mdesc)
 	 * a problem with the linear kernel map, since the allocations can
 	 * use the 1:1 map in that case.
 	 */
-	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC))
+	if (!IS_ENABLED(CONFIG_ARM_KERNEL_IN_VMALLOC)) {
 		memblock_reserve(__pa(KERNEL_START), KERNEL_END - KERNEL_START);
-	else
-		memblock_reserve(kernel_sec_start, KERNEL_SECTION_SIZE);
+		pr_info("Reseve memblock: %08x -> %08x\n", (u32)__pa(KERNEL_START), (u32)(__pa(KERNEL_START) + KERNEL_END - KERNEL_START));
+		pr_info("Sections: %08x -> %08x\n", (u32)kernel_sec_start, (u32)(kernel_sec_start + KERNEL_SECTION_SIZE));
+	} else {
+		pr_info("Reseve memblock / sections: %08x -> %08x\n", (u32)kernel_sec_start, (u32)(kernel_sec_start + KERNEL_SECTION_SIZE));
+		memblock_reserve(__pa(KERNEL_START), KERNEL_END - KERNEL_START);
+		//memblock_reserve(kernel_sec_start, KERNEL_SECTION_SIZE);
+	}
 
 	reserve_initrd_mem();
 
