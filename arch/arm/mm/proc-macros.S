@@ -8,6 +8,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/pgtable.h>
 #include <asm/thread_info.h>
+#include <asm/assembler.h>
 
 #ifdef CONFIG_CPU_V7M
 #include <asm/v7m.h>
@@ -25,17 +26,6 @@
  */
 	.macro	vma_vm_flags, rd, rn
 	ldr	\rd, [\rn, #VMA_VM_FLAGS]
-	.endm
-
-/*
- * act_mm - get current->active_mm
- */
-	.macro	act_mm, rd
-	get_current \rd
-	.if (TSK_ACTIVE_MM > IMM12_MASK)
-	add	\rd, \rd, #TSK_ACTIVE_MM & ~IMM12_MASK
-	.endif
-	ldr	\rd, [\rd, #TSK_ACTIVE_MM & IMM12_MASK]
 	.endm
 
 /*

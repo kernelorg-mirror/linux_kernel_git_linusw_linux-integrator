@@ -222,6 +222,18 @@ THUMB(	fpreg	.req	r7	)
 	.endm
 
 /*
+ * Get current active memory manager context act_mm - get current->active_mm
+ */
+	.macro	act_mm, rd
+	get_current \rd
+	.if (TSK_ACTIVE_MM > IMM12_MASK)
+	add	\rd, \rd, #TSK_ACTIVE_MM & ~IMM12_MASK
+	.endif
+	ldr	\rd, [\rd, #TSK_ACTIVE_MM & IMM12_MASK]
+	.endm
+
+
+/*
  * Increment/decrement the preempt count.
  */
 #ifdef CONFIG_PREEMPT_COUNT
