@@ -8,13 +8,14 @@
 /*
  * User space memory access functions
  */
+#include <linux/mm_types.h>
 #include <linux/string.h>
 #include <asm/memory.h>
 #include <asm/domain.h>
 #include <asm/unaligned.h>
 #include <asm/unified.h>
 #include <asm/compiler.h>
-
+#include <asm/proc-fns.h>
 #include <asm/extable.h>
 
 /*
@@ -34,6 +35,13 @@ static __always_inline unsigned int uaccess_save_and_enable(void)
 
 	return old_domain;
 #else
+	/* FIXME: ifdef CONFIG_VMSPLIT_4G_4G */
+	struct mm_struct *mm = current->active_mm;
+
+	/* Switch to the currently active task VM context */
+	pr_info("ENTER %s\n", __func__);
+	cpu_switch_mm(mm->pgd, mm);
+	pr_info("SWITCHED %s\n", __func__);
 	return 0;
 #endif
 }
@@ -43,6 +51,14 @@ static __always_inline void uaccess_restore(unsigned int flags)
 #ifdef CONFIG_CPU_SW_DOMAIN_PAN
 	/* Restore the user access mask */
 	set_domain(flags);
+#else
+	/* FIXME: ifdef CONFIG_VMSPLIT_4G_4G */
+	struct mm_struct *mm = &init_mm;
+
+	/* Switch to the kernel VM context */
+	pr_info("ENTER %s\n", __func__);
+	cpu_switch_mm(mm->pgd, mm);
+	pr_info("SWITCHED %s\n", __func__);
 #endif
 }
 
