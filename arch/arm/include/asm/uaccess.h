@@ -126,7 +126,7 @@ extern int __get_user_64t_4(void *);
 		"bl	__get_user_" #__s				\
 		: "=&r" (__e), "=r" (__r2)				\
 		: "0" (__p), "r" (__l)					\
-		: __GUP_CLOBBER_##__s)
+		: "r4", "r5", __GUP_CLOBBER_##__s)
 
 /* narrowing a double-word get into a single 32bit word register: */
 #ifdef __ARMEB__
@@ -233,7 +233,10 @@ extern int __put_user_8(void *, unsigned long long);
 
 #include <asm-generic/access_ok.h>
 
-#ifdef CONFIG_CPU_SPECTRE
+// #ifdef CONFIG_CPU_SPECTRE
+// FIXME: if defined(CONFIG_CPU_SPECTRE) | defined(CONFIG_VMSPLIT_4G_4G)
+// REVISIT: optimize these to work with 4G/4G?
+#if 1
 /*
  * When mitigating Spectre variant 1, it is not worth fixing the non-
  * verifying accessors, because we need to add verification of the
@@ -242,7 +245,6 @@ extern int __put_user_8(void *, unsigned long long);
  */
 #define __get_user(x, ptr) get_user(x, ptr)
 #else
-
 /*
  * The "__xxx" versions of the user access functions do not verify the
  * address space - it must have been done previously with a separate
@@ -353,7 +355,10 @@ do {									\
 	__pu_err;							\
 })
 
-#ifdef CONFIG_CPU_SPECTRE
+//#ifdef CONFIG_CPU_SPECTRE
+// FIXME: if defined(CONFIG_CPU_SPECTRE) | defined(CONFIG_VMSPLIT_4G_4G)
+// REVISIT: optimize these to work with 4G/4G?
+#if 1
 /*
  * When mitigating Spectre variant 1.1, all accessors need to include
  * verification of the address space.
@@ -508,16 +513,47 @@ do {									\
 #ifdef CONFIG_MMU
 extern unsigned long __must_check
 arm_copy_from_user(void *to, const void __user *from, unsigned long n);
+extern bool is_vmalloc_addr(const void *x);
+
+#define my_copy_to_kernel_nofault_loop(dst, src, len, type, err_label)  \
+        while (len >= sizeof(type)) {                                   \
+                __get_kernel_nofault(dst, src, type, err_label);	\
+                dst += sizeof(type);                                    \
+                src += sizeof(type);                                    \
+                len -= sizeof(type);                                    \
+        }
 
 static inline unsigned long __must_check
 raw_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	unsigned int __ua_flags;
+	unsigned long align = (unsigned long)from | (unsigned long)to;
+
+	pr_info("%s %08x -> %08x, %08x bytes\n", __func__, (u32)from, (u32)to, (u32)n);
+	/* TODO: if 4G_4G */
+	if (is_vmalloc_addr(to)) {
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_from_user(to, from, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
 
 	__ua_flags = uaccess_save_and_enable();
-	n = arm_copy_from_user(to, from, n);
+
+	if (!(align & 7))
+		my_copy_to_kernel_nofault_loop(to, from, n, u64, Efault);
+	if (!(align & 3))
+		my_copy_to_kernel_nofault_loop(to, from, n, u32, Efault);
+	if (!(align & 1))
+		my_copy_to_kernel_nofault_loop(to, from, n, u16, Efault);
+	my_copy_to_kernel_nofault_loop(to, from, n, u8, Efault);
+
 	uaccess_restore(__ua_flags);
 	return n;
+Efault:
+	pr_info("FAULT\n");
+	uaccess_restore(__ua_flags);
+	return -EFAULT;
 }
 
 extern unsigned long __must_check
@@ -525,18 +561,59 @@ arm_copy_to_user(void __user *to, const void *from, unsigned long n);
 extern unsigned long __must_check
 __copy_to_user_std(void __user *to, const void *from, unsigned long n);
 
+#define my_copy_from_kernel_nofault_loop(dst, src, len, type, err_label) \
+	while (len >= sizeof(type)) {                                   \
+		__put_kernel_nofault(dst, src, type, err_label);	\
+                dst += sizeof(type);                                    \
+		src += sizeof(type);                                    \
+		len -= sizeof(type);                                    \
+	}
+
 static inline unsigned long __must_check
 raw_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-#ifndef CONFIG_UACCESS_WITH_MEMCPY
 	unsigned int __ua_flags;
+	unsigned long align = (unsigned long)from | (unsigned long)to;
+	u8 bounce[512];
+
+	pr_info("%s %08x -> %08x, %08x bytes\n", __func__, (u32)from, (u32)to, (u32)n);
+
+	/* TODO: if 4G_4G */
+	if (is_vmalloc_addr(from)) {
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_to_user(to, from, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
+
+	/* Copy to VMALLOC-mapped stack */
+	if (n <= 512) {
+		pr_info("Bounce to %08x\n", (u32)bounce);
+		memcpy(bounce, from, n);
+		__ua_flags = uaccess_save_and_enable();
+	        n = arm_copy_to_user(to, bounce, n);
+		uaccess_restore(__ua_flags);
+		return n;
+	}
+
+	/* Elaborate page copy */
 	__ua_flags = uaccess_save_and_enable();
-	n = arm_copy_to_user(to, from, n);
+
+	if (!(align & 7))
+		my_copy_from_kernel_nofault_loop(to, from, n, u64, Efault);
+	if (!(align & 3))
+		my_copy_from_kernel_nofault_loop(to, from, n, u32, Efault);
+	if (!(align & 1))
+		my_copy_from_kernel_nofault_loop(to, from, n, u16, Efault);
+	my_copy_from_kernel_nofault_loop(to, from, n, u8, Efault);
+
 	uaccess_restore(__ua_flags);
+
 	return n;
-#else
-	return arm_copy_to_user(to, from, n);
-#endif
+Efault:
+	pr_info("FAULT\n");
+	uaccess_restore(__ua_flags);
+	return -EFAULT;
 }
 
 extern unsigned long __must_check

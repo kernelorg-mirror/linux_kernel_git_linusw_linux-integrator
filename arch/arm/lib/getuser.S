@@ -31,14 +31,17 @@
 
 ENTRY(__get_user_1)
 	check_uaccess r0, 1, r1, r2, __get_user_bad
+	usr_vm_context r2, r4, r5
 1: TUSER(ldrb)	r2, [r0]
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_1)
 _ASM_NOKPROBE(__get_user_1)
 
 ENTRY(__get_user_2)
 	check_uaccess r0, 2, r1, r2, __get_user_bad
+	usr_vm_context r2, r4, r5
 #if __LINUX_ARM_ARCH__ >= 6
 
 2: TUSER(ldrh)	r2, [r0]
@@ -63,20 +66,24 @@ rb	.req	r0
 #endif /* __LINUX_ARM_ARCH__ >= 6 */
 
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_2)
 _ASM_NOKPROBE(__get_user_2)
 
 ENTRY(__get_user_4)
 	check_uaccess r0, 4, r1, r2, __get_user_bad
+	usr_vm_context r2, r4, r5
 4: TUSER(ldr)	r2, [r0]
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_4)
 _ASM_NOKPROBE(__get_user_4)
 
 ENTRY(__get_user_8)
 	check_uaccess r0, 8, r1, r2, __get_user_bad8
+	usr_vm_context r2, r4, r5
 #ifdef CONFIG_THUMB2_KERNEL
 5: TUSER(ldr)	r2, [r0]
 6: TUSER(ldr)	r3, [r0, #4]
@@ -85,6 +92,7 @@ ENTRY(__get_user_8)
 6: TUSER(ldr)	r3, [r0]
 #endif
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_8)
 _ASM_NOKPROBE(__get_user_8)
@@ -92,6 +100,7 @@ _ASM_NOKPROBE(__get_user_8)
 #ifdef __ARMEB__
 ENTRY(__get_user_32t_8)
 	check_uaccess r0, 8, r1, r2, __get_user_bad
+	usr_vm_context r2, r4, r5
 #ifdef CONFIG_CPU_USE_DOMAINS
 	add	r0, r0, #4
 7:	ldrt	r2, [r0]
@@ -99,20 +108,24 @@ ENTRY(__get_user_32t_8)
 7:	ldr	r2, [r0, #4]
 #endif
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_32t_8)
 _ASM_NOKPROBE(__get_user_32t_8)
 
 ENTRY(__get_user_64t_1)
 	check_uaccess r0, 1, r1, r2, __get_user_bad8
+	usr_vm_context r2, r4, r5
 8: TUSER(ldrb)	r3, [r0]
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_64t_1)
 _ASM_NOKPROBE(__get_user_64t_1)
 
 ENTRY(__get_user_64t_2)
 	check_uaccess r0, 2, r1, r2, __get_user_bad8
+	usr_vm_context r2, r4, r5
 #ifdef CONFIG_CPU_USE_DOMAINS
 rb	.req	ip
 9:	ldrbt	r3, [r0], #1
@@ -124,14 +137,17 @@ rb	.req	r0
 #endif
 	orr	r3, rb, r3, lsl #8
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_64t_2)
 _ASM_NOKPROBE(__get_user_64t_2)
 
 ENTRY(__get_user_64t_4)
 	check_uaccess r0, 4, r1, r2, __get_user_bad8
+	usr_vm_context r2, r4, r5
 11: TUSER(ldr)	r3, [r0]
 	mov	r0, #0
+	kernel_vm_context r5
 	ret	lr
 ENDPROC(__get_user_64t_4)
 _ASM_NOKPROBE(__get_user_64t_4)
