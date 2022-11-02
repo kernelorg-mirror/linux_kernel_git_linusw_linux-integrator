@@ -104,6 +104,26 @@
 		};
 	};
 
+	vusb2: regulator-usb2 {
+		/* On Semiconductor FAN6250M6X marked "527AJ" */
+		compatible = "regulator-fixed";
+		regulator-name = "vusb2";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&chipcommon 21 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
+	vusb3: regulator-usb3 {
+		/* On Semiconductor FAN6250M6X marked "527AJ" */
+		compatible = "regulator-fixed";
+		regulator-name = "vusb3";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&chipcommon 18 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	/*
 	 * The flash memory is memory mapped at 0x1e000000-0x1fffffff
 	 * 64KB blocks; total size 2MB, same that can be
@@ -155,16 +175,13 @@
 	};
 };
 
-&usb2 {
-	vcc-gpios = <&chipcommon 21 GPIO_ACTIVE_HIGH>;
-};
-
-&usb3 {
-	vcc-gpios = <&chipcommon 18 GPIO_ACTIVE_HIGH>;
+&usb2_phy {
+	vcc-supply = <&vusb2>;
 };
 
 &usb3_phy {
 	status = "okay";
+	vcc-supply = <&vusb3>;
 };
 
 &srab {
