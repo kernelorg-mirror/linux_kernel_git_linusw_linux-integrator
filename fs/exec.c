@@ -918,8 +918,10 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 		open_exec_flags.lookup_flags |= LOOKUP_EMPTY;
 
 	file = do_filp_open(fd, name, &open_exec_flags);
-	if (IS_ERR(file))
+	if (IS_ERR(file)) {
+		pr_err("do_filp_open() failed for %s\n", name->name);
 		goto out;
+	}
 
 	/*
 	 * may_open() has already checked for this, so it should be
@@ -932,13 +934,16 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 		goto exit;
 
 	err = deny_write_access(file);
-	if (err)
+	if (err) {
+		pr_err("deny_write_access() failed for %s\n", name->name);
 		goto exit;
+	}
 
 	if (name->name[0] != '\0')
 		fsnotify_open(file);
 
 out:
+	pr_err("%s success on %s\n", __func__, name->name);
 	return file;
 
 exit:
@@ -1762,12 +1767,16 @@ static int exec_binprm(struct linux_binprm *bprm)
 	/* This allows 4 levels of binfmt rewrites before failing hard. */
 	for (depth = 0;; depth++) {
 		struct file *exec;
-		if (depth > 5)
+		if (depth > 5) {
+			pr_err("tried 5 levels of binfmt rewrites, giving up\n");
 			return -ELOOP;
+		}
 
 		ret = search_binary_handler(bprm);
-		if (ret < 0)
+		if (ret < 0) {
+			pr_info("search_binary_handler() failed %d\n", ret);
 			return ret;
+		}
 		if (!bprm->interpreter)
 			break;
 
@@ -1778,6 +1787,7 @@ static int exec_binprm(struct linux_binprm *bprm)
 		allow_write_access(exec);
 		if (unlikely(bprm->have_execfd)) {
 			if (bprm->executable) {
+				pr_err("bprm->executable() was set\n");
 				fput(exec);
 				return -ENOEXEC;
 			}
@@ -1835,8 +1845,12 @@ static int bprm_execve(struct linux_binprm *bprm,
 		goto out;
 
 	retval = exec_binprm(bprm);
-	if (retval < 0)
+	if (retval < 0) {
+		pr_err("%s exec_binprm(%s) failed %d\n", __func__,
+		       filename->name,
+		       retval);
 		goto out;
+	}
 
 	/* execve succeeded */
 	current->fs->in_exec = 0;
