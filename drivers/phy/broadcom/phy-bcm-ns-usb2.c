@@ -16,10 +16,12 @@
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
 struct bcm_ns_usb2 {
 	struct device *dev;
+	struct regulator *vcc;
 	struct clk *ref_clk;
 	struct phy *phy;
 	struct regmap *clkset;
@@ -96,16 +98,36 @@ static const struct phy_ops ops = {
 	.owner		= THIS_MODULE,
 };
 
+static void bcm_ns_usb2_disable_regulator(void *d)
+{
+	struct bcm_ns_usb2 *usb2 = d;
+
+	regulator_disable(usb2->vcc);
+}
+
 static int bcm_ns_usb2_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct bcm_ns_usb2 *usb2;
 	struct phy_provider *phy_provider;
+	int err;
 
 	usb2 = devm_kzalloc(&pdev->dev, sizeof(*usb2), GFP_KERNEL);
 	if (!usb2)
 		return -ENOMEM;
 	usb2->dev = dev;
+
+	usb2->vcc = devm_regulator_get(dev, "vcc");
+	if (IS_ERR(usb2->vcc))
+		return dev_err_probe(dev, PTR_ERR(usb2->vcc),
+				     "failed to get vcc\n");
+	err = regulator_enable(usb2->vcc);
+	if (err)
+		return dev_err_probe(dev, err,
+				     "failed to enable vcc\n");
+	err = devm_add_action_or_reset(dev, bcm_ns_usb2_disable_regulator, usb2);
+	if (err)
+		return err;
 
 	if (of_find_property(dev->of_node, "brcm,syscon-clkset", NULL)) {
 		usb2->base = devm_platform_ioremap_resource(pdev, 0);
