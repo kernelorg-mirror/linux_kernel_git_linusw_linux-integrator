@@ -41,6 +41,10 @@ properties:
     items:
       - const: phy-ref-clk
 
+  vcc-supply:
+    description:
+      The regulator controlling the current to the PHY.
+
   "#phy-cells":
     const: 0
 
@@ -68,5 +72,6 @@ examples:
         brcm,syscon-clkset = <&clkset>;
         clocks = <&genpll BCM_NSP_GENPLL_USB_PHY_REF_CLK>;
         clock-names = "phy-ref-clk";
+        vcc-supply = <&vcc>;
         #phy-cells = <0>;
     };

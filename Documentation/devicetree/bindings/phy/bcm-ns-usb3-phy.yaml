@@ -32,6 +32,10 @@ properties:
     description:
       Phandle to the DMP (Device Management Plugin) syscon
 
+  vcc-supply:
+    description:
+      The regulator controlling the current to the PHY.
+
   "#phy-cells":
     const: 0
 
@@ -53,6 +57,7 @@ examples:
             compatible = "brcm,ns-ax-usb3-phy";
             reg = <0x10>;
             usb3-dmp-syscon = <&usb3_dmp>;
+            vcc-supply = <&vcc>;
             #phy-cells = <0>;
         };
     };
