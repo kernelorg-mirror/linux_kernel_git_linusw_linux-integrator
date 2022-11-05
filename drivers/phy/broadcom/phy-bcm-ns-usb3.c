@@ -20,6 +20,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/phy/phy.h>
+#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
 #define BCM_NS_USB3_PHY_BASE_ADDR_REG	0x1f
@@ -47,6 +48,7 @@ enum bcm_ns_family {
 
 struct bcm_ns_usb3 {
 	struct device *dev;
+	struct regulator *vcc;
 	enum bcm_ns_family family;
 	void __iomem *dmp;
 	struct mdio_device *mdiodev;
@@ -186,6 +188,13 @@ static int bcm_ns_usb3_mdio_phy_write(struct bcm_ns_usb3 *usb3, u16 reg,
 	return mdiodev_write(mdiodev, reg, value);
 }
 
+static void bcm_ns_usb3_disable_regulator(void *d)
+{
+	struct bcm_ns_usb3 *usb3 = d;
+
+	regulator_disable(usb3->vcc);
+}
+
 static int bcm_ns_usb3_mdio_probe(struct mdio_device *mdiodev)
 {
 	struct device *dev = &mdiodev->dev;
@@ -211,6 +220,18 @@ static int bcm_ns_usb3_mdio_probe(struct mdio_device *mdiodev)
 	syscon_np = of_parse_phandle(dev->of_node, "usb3-dmp-syscon", 0);
 	err = of_address_to_resource(syscon_np, 0, &res);
 	of_node_put(syscon_np);
+	if (err)
+		return err;
+
+	usb3->vcc = devm_regulator_get(dev, "vcc");
+	if (IS_ERR(usb3->vcc))
+		return dev_err_probe(dev, PTR_ERR(usb3->vcc),
+				     "failed to get vcc\n");
+	err = regulator_enable(usb3->vcc);
+	if (err)
+		return dev_err_probe(dev, err,
+				     "failed to enable vcc\n");
+	err = devm_add_action_or_reset(dev, bcm_ns_usb3_disable_regulator, usb3);
 	if (err)
 		return err;
 
