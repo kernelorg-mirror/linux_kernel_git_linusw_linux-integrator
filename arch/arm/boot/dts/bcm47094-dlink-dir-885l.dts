@@ -105,10 +105,17 @@
 			gpios = <&chipcommon 17 GPIO_ACTIVE_LOW>;
 		};
 	};
-};
 
-&usb3 {
-	vcc-gpio = <&chipcommon 18 GPIO_ACTIVE_HIGH>;
+
+	vusb3: regulator {
+		/* Assuming On Semiconductor FAN6250M6X */
+		compatible = "regulator-fixed";
+		regulator-name = "vusb3";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&chipcommon 18 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
 };
 
 &spi_nor {
@@ -117,6 +124,7 @@
 
 &usb3_phy {
 	status = "okay";
+	vcc-supply = <&vusb3>;
 };
 
 &srab {
