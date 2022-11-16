@@ -2636,6 +2636,8 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	int trace = 0;
 	pid_t nr;
 
+	if (!args->kthread)
+		pr_info("%s()\n", __func__);
 	/*
 	 * For legacy clone() calls, CLONE_PIDFD uses the parent_tid argument
 	 * to return the pidfd. Hence, CLONE_PIDFD and CLONE_PARENT_SETTID are
@@ -2668,6 +2670,8 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 			trace = 0;
 	}
 
+	if (!args->kthread)
+		pr_info("%s(): copy_process()\n", __func__);
 	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 
@@ -2699,6 +2703,8 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 		task_unlock(p);
 	}
 
+	if (!args->kthread)
+		pr_info("%s(): wake_up_new_task()\n", __func__);
 	wake_up_new_task(p);
 
 	/* forking complete and child started to run, tell ptracer */
@@ -2711,6 +2717,8 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 	}
 
 	put_pid(pid);
+	if (!args->kthread)
+		pr_info("%s(): forked process %d\n", __func__, nr);
 	return nr;
 }
 
@@ -2744,6 +2752,7 @@ pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 		.fn_arg		= arg,
 	};
 
+	pr_info("%s()\n", __func__);
 	return kernel_clone(&args);
 }
 
