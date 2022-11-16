@@ -270,6 +270,8 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	unsigned int flags = FAULT_FLAG_DEFAULT;
 	unsigned long vm_flags = VM_ACCESS_FLAGS;
 
+	pr_info("%s: addr = 0x%08x\n", __func__, (u32)addr);
+
 	if (kprobe_page_fault(regs, fsr))
 		return 0;
 
@@ -363,6 +365,10 @@ retry:
 		code = SEGV_ACCERR;
 		goto bad_area;
 	}
+
+	if (addr < 0xc0000000)
+		pr_info("PGD at 0x%08x FAULT IN to page at 0x%08x\n",
+			(u32)mm->pgd, (u32)(addr & PAGE_MASK));
 
 	fault = handle_mm_fault(vma, addr & PAGE_MASK, flags, regs);
 

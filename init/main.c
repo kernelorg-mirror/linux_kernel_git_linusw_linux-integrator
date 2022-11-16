@@ -709,6 +709,7 @@ static noinline void __ref __noreturn rest_init(void)
 	 * the init task will end up wanting to create kthreads, which, if
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
+	pr_info("%s: call user_mode_thread(kernel_init)\n", __func__);
 	pid = user_mode_thread(kernel_init, NULL, CLONE_FS);
 	/*
 	 * Pin init on the boot CPU. Task migration is not properly working
@@ -1376,6 +1377,7 @@ static void __init do_pre_smp_initcalls(void)
 static int run_init_process(const char *init_filename)
 {
 	const char *const *p;
+	int ret;
 
 	argv_init[0] = init_filename;
 	pr_info("Run %s as init process\n", init_filename);
@@ -1385,7 +1387,9 @@ static int run_init_process(const char *init_filename)
 	pr_debug("  with environment:\n");
 	for (p = envp_init; *p; p++)
 		pr_debug("    %s\n", *p);
-	return kernel_execve(init_filename, argv_init, envp_init);
+	ret = kernel_execve(init_filename, argv_init, envp_init);
+	pr_info("%s return from kernel_execve()\n", __func__);
+	return ret;
 }
 
 static int try_to_run_init_process(const char *init_filename)
@@ -1398,6 +1402,7 @@ static int try_to_run_init_process(const char *init_filename)
 		pr_err("Starting init: %s exists but couldn't execute it (error %d)\n",
 		       init_filename, ret);
 	}
+	pr_info("now executing %s as init process\n", init_filename);
 
 	return ret;
 }
@@ -1491,8 +1496,10 @@ static int __ref kernel_init(void *unused)
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
-		if (!ret)
+		if (!ret) {
+			pr_info("%s: executed init from ramdisk, done\n", __func__);
 			return 0;
+		}
 		pr_err("Failed to execute %s (error %d)\n",
 		       ramdisk_execute_command, ret);
 	}
@@ -1505,8 +1512,10 @@ static int __ref kernel_init(void *unused)
 	 */
 	if (execute_command) {
 		ret = run_init_process(execute_command);
-		if (!ret)
+		if (!ret) {
+			pr_info("executed bourne shell, done\n");
 			return 0;
+		}
 		panic("Requested init %s failed (error %d).",
 		      execute_command, ret);
 	}
@@ -1516,8 +1525,10 @@ static int __ref kernel_init(void *unused)
 		if (ret)
 			pr_err("Default init %s failed (error %d)\n",
 			       CONFIG_DEFAULT_INIT, ret);
-		else
+		else {
+			pr_info("executed default shell %s, done\n", CONFIG_DEFAULT_INIT);
 			return 0;
+		}
 	}
 
 	if (!try_to_run_init_process("/sbin/init") ||
