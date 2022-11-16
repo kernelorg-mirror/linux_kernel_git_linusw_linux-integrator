@@ -256,6 +256,9 @@ __do_page_fault(struct mm_struct *mm, unsigned long addr, unsigned int flags,
 	if (!(vma->vm_flags & vma_flags))
 		return VM_FAULT_BADACCESS;
 
+	if (addr < 0xc0000000)
+		pr_info("PGD at 0x%08x FAULT IN to page at 0x%08x\n",
+			(u32)mm->pgd, (u32)(addr & PAGE_MASK));
 	return handle_mm_fault(vma, addr & PAGE_MASK, flags, regs);
 }
 
@@ -267,6 +270,8 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	vm_fault_t fault;
 	unsigned int flags = FAULT_FLAG_DEFAULT;
 	unsigned long vm_flags = VM_ACCESS_FLAGS;
+
+	pr_info("%s: addr = 0x%08x\n", __func__, (u32)addr);
 
 	if (kprobe_page_fault(regs, fsr))
 		return 0;

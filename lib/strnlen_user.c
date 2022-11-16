@@ -34,7 +34,7 @@ static __always_inline long do_strnlen_user(const char __user *src, unsigned lon
 	src -= align;
 	max += align;
 
-	unsafe_get_user(c, (unsigned long __user *)src, efault);
+	unsafe_get_user(c, (unsigned long __user *)src, efault_unsafe);
 	c |= aligned_byte_mask(align);
 
 	for (;;) {
@@ -65,6 +65,9 @@ static __always_inline long do_strnlen_user(const char __user *src, unsigned lon
 	 * characters the caller would have wanted. That's 0.
 	 */
 efault:
+	return 0;
+efault_unsafe:
+	pr_err("fault from __get_user() when trying to do unsafe_get_user()\n");
 	return 0;
 }
 
