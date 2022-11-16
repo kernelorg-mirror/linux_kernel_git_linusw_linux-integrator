@@ -213,6 +213,8 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 		size_t len = strlen(k_platform) + 1;
 
 		u_platform = (elf_addr_t __user *)STACK_ALLOC(p, len);
+		pr_info("%s: copy platform capability string %s to userspace\n", __func__,
+			k_platform);
 		if (copy_to_user(u_platform, k_platform, len))
 			return -EFAULT;
 	}
@@ -226,6 +228,8 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 		size_t len = strlen(k_base_platform) + 1;
 
 		u_base_platform = (elf_addr_t __user *)STACK_ALLOC(p, len);
+		pr_info("%s: copy base platform capability string %s to userspace\n", __func__,
+			k_base_platform);
 		if (copy_to_user(u_base_platform, k_base_platform, len))
 			return -EFAULT;
 	}
@@ -236,8 +240,11 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 	get_random_bytes(k_rand_bytes, sizeof(k_rand_bytes));
 	u_rand_bytes = (elf_addr_t __user *)
 		       STACK_ALLOC(p, sizeof(k_rand_bytes));
-	if (copy_to_user(u_rand_bytes, k_rand_bytes, sizeof(k_rand_bytes)))
+	pr_info("%s: copy 16 random bytes to userspace for seeding\n", __func__);
+	if (copy_to_user(u_rand_bytes, k_rand_bytes, sizeof(k_rand_bytes))) {
+		pr_info("%s: failed to copy random bytes!\n", __func__);
 		return -EFAULT;
+	}
 
 	/* Create the ELF interpreter info */
 	elf_info = (elf_addr_t *)mm->saved_auxv;
@@ -328,25 +335,36 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 		return -EFAULT;
 
 	/* Now, let's put argc (and argv, envp if appropriate) on the stack */
-	if (put_user(argc, sp++))
+	pr_info("%s: put argc on the stack with put_user()\n", __func__);
+	if (put_user(argc, sp++)) {
+		pr_err("%s: put_user() failed!\n", __func__);
 		return -EFAULT;
+	}
 
 	/* Populate list of argv pointers back to argv strings. */
+	pr_info("%s: copy argv pointers\n", __func__);
 	p = mm->arg_end = mm->arg_start;
 	while (argc-- > 0) {
 		size_t len;
-		if (put_user((elf_addr_t)p, sp++))
+		if (put_user((elf_addr_t)p, sp++)) {
+			pr_err("%s: put_user() failed!\n", __func__);
 			return -EFAULT;
+		}
 		len = strnlen_user((void __user *)p, MAX_ARG_STRLEN);
-		if (!len || len > MAX_ARG_STRLEN)
+		if (!len || len > MAX_ARG_STRLEN) {
+			pr_err("%s: strnlen_user() failed!\n", __func__);
 			return -EINVAL;
+		}
 		p += len;
 	}
-	if (put_user(0, sp++))
+	if (put_user(0, sp++)) {
+		pr_err("%s: put terminating NULL failed!\n", __func__);
 		return -EFAULT;
+	}
 	mm->arg_end = p;
 
 	/* Populate list of envp pointers back to envp strings. */
+	pr_info("%s: copy envp pointers\n", __func__);
 	mm->env_end = mm->env_start = p;
 	while (envc-- > 0) {
 		size_t len;
@@ -362,6 +380,7 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 	mm->env_end = p;
 
 	/* Put the elf_info on the stack in the right place.  */
+	pr_info("%s: put elf_info on the stack\n", __func__);
 	if (copy_to_user(sp, mm->saved_auxv, ei_index * sizeof(elf_addr_t)))
 		return -EFAULT;
 	return 0;
@@ -843,6 +862,8 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	struct mm_struct *mm;
 	struct pt_regs *regs;
 
+	pr_info("trying %s on %s\n", __func__, bprm->filename);
+
 	retval = -ENOEXEC;
 	/* First of all, some simple consistency checks */
 	if (memcmp(elf_ex->e_ident, ELFMAG, SELFMAG) != 0)
@@ -1288,10 +1309,13 @@ out_free_interp:
 		goto out;
 #endif /* ARCH_HAS_SETUP_ADDITIONAL_PAGES */
 
+	pr_info("%s: create_elf_tables()\n", __func__);
 	retval = create_elf_tables(bprm, elf_ex, interp_load_addr,
 				   e_entry, phdr_addr);
-	if (retval < 0)
+	if (retval < 0) {
+		pr_info("failed to create ELF tables!\n");
 		goto out;
+	}
 
 	mm = current->mm;
 	mm->end_code = end_code;
@@ -1344,9 +1368,11 @@ out_free_interp:
 #endif
 
 	finalize_exec(bprm);
+	pr_info("%s: call START_THREAD() entry at 0x%08x\n", __func__, elf_entry);
 	START_THREAD(elf_ex, regs, elf_entry, bprm->p);
 	retval = 0;
 out:
+	pr_info("%s: exit\n", __func__);
 	return retval;
 
 	/* error cleanup */
@@ -1373,6 +1399,7 @@ static int load_elf_library(struct file *file)
 	int retval, error, i, j;
 	struct elfhdr elf_ex;
 
+	pr_info("trying %s on %s\n", __func__, file->name);
 	error = -ENOEXEC;
 	retval = elf_read(file, &elf_ex, sizeof(elf_ex), 0);
 	if (retval < 0)

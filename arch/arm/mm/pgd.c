@@ -124,6 +124,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 		pte_unmap(new_pte);
 	}
 
+	pr_info("New PGD created at 0x%08x\n", (u32)new_pgd);
 	return new_pgd;
 
 no_pte:

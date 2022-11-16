@@ -242,7 +242,6 @@ extern int __put_user_8(void *, unsigned long long);
  */
 #define __get_user(x, ptr) get_user(x, ptr)
 #else
-
 /*
  * The "__xxx" versions of the user access functions do not verify the
  * address space - it must have been done previously with a separate
