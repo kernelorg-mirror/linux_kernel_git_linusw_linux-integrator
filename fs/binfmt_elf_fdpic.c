@@ -197,6 +197,7 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 	int retval, i;
 	loff_t pos;
 
+	pr_info("trying %s\n", __func__);
 	kdebug("____ LOAD %d ____", current->pid);
 
 	memset(&exec_params, 0, sizeof(exec_params));
