@@ -24,11 +24,13 @@ long long arch_phys_to_idmap_offset __ro_after_init;
 static void idmap_add_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 	unsigned long prot)
 {
-	pmd_t *pmd;
+	pmd_t *pmd, *idmap_pmd;
 	unsigned long next;
+	int i;
 
 	if (pud_none_or_clear_bad(pud) || (pud_val(*pud) & L_PGD_SWAPPER)) {
 		pmd = pmd_alloc_one(&init_mm, addr);
+		pr_info("Allocating new PMD for idmap at %08x PA %08x\n", (u32)pmd, (u32)__pa(pmd));
 		if (!pmd) {
 			pr_warn("Failed to allocate identity pmd.\n");
 			return;
@@ -37,19 +39,40 @@ static void idmap_add_pmd(pud_t *pud, unsigned long addr, unsigned long end,
 		 * Copy the original PMD to ensure that the PMD entries for
 		 * the kernel image are preserved.
 		 */
-		if (!pud_none(*pud))
+		if (!pud_none(*pud)) {
+			pr_info("Copying kernel PMD pointers\n");
 			memcpy(pmd, pmd_offset(pud, 0),
 			       PTRS_PER_PMD * sizeof(pmd_t));
+		}
+		idmap_pmd = pmd_offset(pud, addr);
+		pr_info("IDMAP PMD for addr 0x%08x: %08x = %08x\n", (u32)addr, (u32)idmap_pmd, (u32)*idmap_pmd);
+		pr_info("Populate PUD with PMD\n");
 		pud_populate(&init_mm, pud, pmd);
 		pmd += pmd_index(addr);
-	} else
+		pr_info("PMD for addr 0x%08x: %08x = %08x\n", (u32)addr, (u32)pmd, (u32)*pmd);
+	} else {
+		pr_info("Using existing PMD for idmap\n");
 		pmd = pmd_offset(pud, addr);
+	}
+
+	pr_info("PMD after check: %08x = %08x\n", (u32)pmd, (u32)*pmd);
 
 	do {
 		next = pmd_addr_end(addr, end);
 		*pmd = __pmd((addr & PMD_MASK) | prot);
 		flush_pmd_entry(pmd);
+		pr_info("Hammering PMD at %08x to %08x\n", (u32)pmd, (u32)*pmd);
 	} while (pmd++, addr = next, addr != end);
+
+	idmap_pmd = pmd_offset(pud, addr);
+	pr_info("IDMAP PMD for addr 0x%08x: %08x = %08x\n", (u32)addr, (u32)idmap_pmd, (u32)*idmap_pmd);
+
+	for (i = 0; i < PTRS_PER_PMD / 8; i++) {
+		pmd_t *test_pmd;
+		test_pmd = pmd_offset(pud, PMD_SIZE * i);
+		pr_info("PMD index %d: pmd %08x = %08x\n", i, (u32)test_pmd, (u32)*test_pmd);
+	}
+	pr_info("PMD index (...)\n");
 }
 #else	/* !CONFIG_ARM_LPAE */
 static void idmap_add_pmd(pud_t *pud, unsigned long addr, unsigned long end,
@@ -114,6 +137,8 @@ static int __init init_static_idmap(void)
 	/* Flush L1 for the hardware to see this page table content */
 	if (!(elf_hwcap & HWCAP_LPAE))
 		flush_cache_louis();
+
+	pr_info("%s: set up the 1:1 idmap PGD at 0x%08x, PA 0x%08x\n", __func__, (u32)idmap_pgd, (u32)__pa(idmap_pgd));
 
 	return 0;
 }
