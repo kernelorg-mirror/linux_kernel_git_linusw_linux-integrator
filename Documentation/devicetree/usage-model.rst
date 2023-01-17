@@ -75,7 +75,44 @@ out of mainline (nios) have some level of DT support.
 If you haven't already read the Device Tree Usage\ [1]_ page,
 then go read it now.  It's okay, I'll wait....
 
-2.1 High Level View
+2.1 Linux Kernel Firmware Abstractions
+--------------------------------------
+
+The Linux kernel supports several different hardware description
+frameworks and DT is just one of them. The closest sibling is the
+:ref:`Documentation/firmware-guide/acpi/index.rst ACPI`
+DSDT (Differentiated System Description Table).
+
+To make it possible to write a device driver that will adapt to DT
+or other hardware description models, the kernel has grown some
+abstractions, first and foremost the firmware node API, exposing
+device properties. The firmware node "fwnode" internals can be found
+in ``<linux/fwnode.h>`` while the device driver-facing API can be
+found in ``<linux/property.h>``. The idea is that if a driver is using
+the firmware node API, it should be trivial to support DT and ACPI
+DSDT alike in the same driver.
+
+The fwnode framework also makes it possible to modify and extend the
+Linux in-kernel model with software-managed nodes "swnodes" to apply
+quirks or manage registration of devices that cannot be handled any
+other way. This API can also be found in ``<linux/property.h>``.
+
+Further, when the DT core register devices these need to fold into the
+Linux device driver model, which essentially means that some kind of
+``struct device`` has to be created to match a corresponding
+``struct device_driver``. This API can be explored in
+detail in :ref:`Documentation/driver-api/driver-model/index.rst the driver API documentation`
+but what you need to know is that the Linux DT parser code will on its
+own mostly spawn platform devices and AMBA devices on the platform
+and AMBA bus respectively, and apart from that it will augment devices
+spawn on other buses where applicable.
+
+Every Linux kernel subsystem that want to supply additional data to
+detected devices using the device tree, or that want to provide
+resources to other devices in the DT, will need to implement calls into
+the DT abstractions.
+
+2.2 High Level View
 -------------------
 The most important thing to understand is that the DT is simply a data
 structure that describes the hardware.  There is nothing magical about
@@ -97,7 +134,7 @@ Linux uses DT data for three major purposes:
 2) runtime configuration, and
 3) device population.
 
-2.2 Platform Identification
+2.3 Platform Identification
 ---------------------------
 First and foremost, the kernel will use data in the DT to identify the
 specific machine.  In a perfect world, the specific platform shouldn't
@@ -180,7 +217,7 @@ However, this approach does not take into account the priority of the
 compatible list, and probably should be avoided for new architecture
 support.
 
-2.3 Runtime configuration
+2.4 Runtime configuration
 -------------------------
 In most cases, a DT will be the sole method of communicating data from
 firmware to the kernel, so also gets used to pass in runtime and
@@ -217,7 +254,7 @@ On ARM, the function setup_machine_fdt() is responsible for early
 scanning of the device tree after selecting the correct machine_desc
 that supports the board.
 
-2.4 Device population
+2.5 Device population
 ---------------------
 After the board has been identified, and after the early configuration data
 has been parsed, then kernel initialization can proceed in the normal
