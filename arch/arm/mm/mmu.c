@@ -1681,6 +1681,17 @@ typedef void pgtables_remap(long long offset, unsigned long pgd);
 pgtables_remap lpae_pgtables_remap_asm;
 
 /*
+ * The TTBCR flags
+ *
+ * The ORGN0 and IRGN0 bits enables different forms of caching when
+ * walking the translation table. Clearing these bits (which is claimed
+ * to be the reset default) means "normal memory, [outer|inner]
+ * non-cacheable"
+ */
+#define TTBCR_ORGN0_MASK	(BIT(11)|BIT(10))
+#define TTBCR_IRGN0_MASK	(BIT(9)|BIT(8))
+
+/*
  * early_paging_init() recreates boot time page table setup, allowing machines
  * to switch over to a high (>4G) address space on LPAE systems
  */
@@ -1688,7 +1699,7 @@ static void __init early_paging_init(const struct machine_desc *mdesc)
 {
 	pgtables_remap *lpae_pgtables_remap;
 	unsigned long pa_pgd;
-	unsigned int cr, ttbcr;
+	u32 cr, ttbcr, tmp;
 	long long offset;
 
 	if (!mdesc->pv_fixup)
@@ -1738,8 +1749,8 @@ static void __init early_paging_init(const struct machine_desc *mdesc)
 	cr = get_cr();
 	set_cr(cr & ~(CR_I | CR_C));
 	asm("mrc p15, 0, %0, c2, c0, 2" : "=r" (ttbcr));
-	asm volatile("mcr p15, 0, %0, c2, c0, 2"
-		: : "r" (ttbcr & ~(3 << 8 | 3 << 10)));
+	tmp = ttbr & ~(TTBCR_ORGN0_MASK | TTBCR_IRGN0_MASK);
+	asm volatile("mcr p15, 0, %0, c2, c0, 2" : : "r" (tmp));
 	flush_cache_all();
 
 	/*
