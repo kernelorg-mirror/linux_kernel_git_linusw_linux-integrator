@@ -446,7 +446,7 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 
 	index = pgd_index(addr);
 
-	pgd = cpu_get_pgd() + index;
+	pgd = current->mm->pgd + index;
 	pgd_k = init_mm.pgd + index;
 
 	p4d = p4d_offset(pgd, addr);
