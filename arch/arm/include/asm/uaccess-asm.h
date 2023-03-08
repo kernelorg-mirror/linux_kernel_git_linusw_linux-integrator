@@ -28,7 +28,7 @@
 	instr_sync
 	.endm
 
-	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
+	.macro  usr_vm_ttbrval, tmp0:req, tmp1:req, tmp2:req
 	/*
 	 * Restore TTBR0 to userspace PGD
 	 * FIXME: elif defined(CONFIG_VMSPLIT_4G_4G)
@@ -45,7 +45,11 @@
 	ldr	\tmp2, [\tmp0, #MM_PGD]
 	ldr	\tmp1, [\tmp0, #(MM_PGD + 4)]
 #endif
+	.endm
+
+	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
 	// Just call cpu_v7_switch_mm()?
+	usr_vm_ttbrval \tmp0, \tmp1, \tmp2
 	mcrr	p15, 0, \tmp1, \tmp2, c2  @ set TTBR0
 	instr_sync
 	.endm

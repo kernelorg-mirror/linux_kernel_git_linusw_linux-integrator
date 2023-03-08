@@ -304,6 +304,7 @@
 ALT_SMP(nop)
 ALT_UP_B(.L1_\@)
 #endif
+	usr_vm_ttbrval r1, r2, r3
 	@ The TLS register update is deferred until return to user space so we
 	@ can use it for other things while running in the kernel
 	mrc	p15, 0, r1, c13, c0, 3		@ get current_thread_info pointer
@@ -312,8 +313,13 @@ ALT_UP_B(.L1_\@)
 .L1_\@:
 #endif
 	uaccess_enable r1, isb=0
-	/* FIXME: won't be needed if uaccess_enable can call usr_vm_context */
-	usr_vm_context r1, r2, r3
+	/*
+	 * We can't just call usr_vm_context calls get_current and that reads c13
+	 * which we just changed above! So we need to read out the right stuff
+	 * into two registers and work from that.
+	 */
+	mcrr	p15, 0, r2, r3, c2  @ set TTBR0
+	instr_sync
 #ifndef CONFIG_THUMB2_KERNEL
 	@ ARM mode restore
 	mov	r2, sp
