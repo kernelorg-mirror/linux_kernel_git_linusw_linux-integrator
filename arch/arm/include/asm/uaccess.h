@@ -153,15 +153,14 @@ extern int __get_user_64t_4(void *);
 #define __get_user_x_64t __get_user_x
 #endif
 
-
 #define __get_user_check(x, p)						\
 	({								\
-		unsigned long __limit = TASK_SIZE - 1; \
+		unsigned long __limit = TASK_SIZE - 1;			\
+		unsigned int __ua_flags = uaccess_save_and_enable();	\
 		register typeof(*(p)) __user *__p asm("r0") = (p);	\
 		register __inttype(x) __r2 asm("r2");			\
 		register unsigned long __l asm("r1") = __limit;		\
 		register int __e asm("r0");				\
-		unsigned int __ua_flags = uaccess_save_and_enable();	\
 		int __tmp_e;						\
 		switch (sizeof(*(__p))) {				\
 		case 1:							\
