@@ -195,9 +195,8 @@ ENDPROC(__und_invalid)
 	@
 	stmia	r7, {r2 - r6}
 
-	.if \uaccess
+	@ Unconditionally switch to kernel TTBR0 mm context
 	kernel_vm_context r0
-	.endif
 
 	get_thread_info tsk
 	uaccess_entry tsk, r0, r1, r2, \uaccess
