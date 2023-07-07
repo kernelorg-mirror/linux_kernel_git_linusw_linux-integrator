@@ -218,9 +218,16 @@
 #endif
 	.endif
 	uaccess_exit tsk, r0, r1
-	.if \uaccess
-	usr_vm_context r0, r1, r2
-	.endif
+
+	@ TODO: Get the contents of the upper word of TTBR0.
+	@ Check ASID in bits 48..63 to see if we are in kernel memory context
+	@ or in some thread memory context. If we are in kernel context, do
+	@ nothing (context is fine already) else switch to the userspace
+	@ memory context.
+	WRONG mrcc	p15, 0, r0, c13, c0, 1
+	beq	1f				@ if zero stay in kernel context
+	usr_vm_context r0, r1, r2		@ switch to userspace process
+1:
 
 #ifndef CONFIG_THUMB2_KERNEL
 	@ ARM mode SVC restore
