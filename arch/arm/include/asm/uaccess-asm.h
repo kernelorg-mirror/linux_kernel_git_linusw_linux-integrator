@@ -23,6 +23,8 @@
  * Switch between the kernel and userspace virtual memory space when
  * doing kernel/userspace address space separation.
  */
+	FIXME: augment to modify upper and lower register
+	with MRCC and MCRR!
 	.macro  kernel_vm_context, rd:req
 	mrc	p15, 0, \rd, c2, c0, 1  @ read TTBR1
 	mcr	p15, 0, \rd, c2, c0, 0  @ set TTBR0
@@ -30,6 +32,7 @@
 	.endm
 
 	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
+	FIXME: don't even do this! Call cpu_v7_switch_mm somehow.
 	/*
 	 * Restore TTBR0 to userspace PGD.
 	 * We need to be in kernel memory context when calling this
