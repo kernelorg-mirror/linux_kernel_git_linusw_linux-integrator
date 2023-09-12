@@ -195,9 +195,8 @@ ENDPROC(__und_invalid)
 	@
 	stmia	r7, {r2 - r6}
 
-	.if \uaccess
-	kernel_vm_context r0
-	.endif
+	@ Unconditionally switch to kernel TTBR0 mm context
+	kernel_vm_context r0, r1
 
 	get_thread_info tsk
 	uaccess_entry tsk, r0, r1, r2, \uaccess
@@ -362,7 +361,7 @@ ENDPROC(__fiq_abt)
  THUMB(	stmia	sp, {r0 - r12}	)
 
 	/* FIXME: won't be needed if uaccess_disable can cal kernel_vm_context */
-	kernel_vm_context r0
+	kernel_vm_context r0, r1
 
  ATRAP(	mrc	p15, 0, r7, c1, c0, 0)
  ATRAP(	ldr_va	r8, cr_alignment)
