@@ -219,14 +219,21 @@
 	.endif
 	uaccess_exit tsk, r0, r1
 
-	@ TODO: Get the contents of the upper word of TTBR0.
+	@ Get the contents of the upper word of TTBR0.
+	mrrc	p15, 0, r0, r1, c2
+
 	@ Check ASID in bits 48..63 to see if we are in kernel memory context
-	@ or in some thread memory context. If we are in kernel context, do
-	@ nothing (context is fine already) else switch to the userspace
-	@ memory context.
-	WRONG mrcc	p15, 0, r0, c13, c0, 1
-	beq	1f				@ if zero stay in kernel context
-	usr_vm_context r0, r1, r2		@ switch to userspace process
+	@ or in some thread memory context. If we are in kernel context
+	@ (ASID == 0), do nothing (context is fine already) else switch to the
+	@ userspace memory context.
+	mov	r2, #0xffff
+#ifndef __ARMEB__
+	and	r1, r1, r2, lsl #16
+#else
+	and	r0, r0, r2, lsl #16
+#endif
+	beq	1f			@ if zero stay in kernel context
+	usr_vm_context r0, r1, r2	@ switch to userspace process
 1:
 
 #ifndef CONFIG_THUMB2_KERNEL
