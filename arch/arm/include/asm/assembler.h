@@ -232,6 +232,34 @@ THUMB(	fpreg	.req	r7	)
 	ldr	\rd, [\rd, #TSK_ACTIVE_MM & IMM12_MASK]
 	.endm
 
+/*
+ * mmid - get context id from mm pointer (mm->context.id)
+ * note, this field is 64bit, so in big-endian the two words are swapped too.
+ */
+	.macro	mmid, rd, rn
+#ifdef __ARMEB__
+	ldr	\rd, [\rn, #MM_CONTEXT_ID + 4 ]
+#else
+	ldr	\rd, [\rn, #MM_CONTEXT_ID]
+#endif
+	.endm
+
+/*
+ * mask_asid - mask the ASID from the context ID
+ */
+	.macro	asid, rd, rn
+	and	\rd, \rn, #255
+	.endm
+
+	.macro	crval, clear, mmuset, ucset
+#ifdef CONFIG_MMU
+	.word	\clear
+	.word	\mmuset
+#else
+	.word	\clear
+	.word	\ucset
+#endif
+	.endm
 
 /*
  * Increment/decrement the preempt count.
