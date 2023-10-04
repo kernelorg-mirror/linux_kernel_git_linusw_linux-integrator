@@ -30,7 +30,6 @@
 	.endm
 
 	.macro  usr_vm_context, tmp0:req, tmp1:req, tmp2:req
-	// FIXME: don't even do this! Call cpu_v7_switch_mm somehow.
 	/*
 	 * Restore TTBR0 to userspace PGD.
 	 * We need to be in kernel memory context when calling this
@@ -48,8 +47,12 @@
 	ldr	\tmp2, [\tmp0, #MM_PGD]
 	ldr	\tmp1, [\tmp0, #(MM_PGD + 4)]
 #endif
+	/* Copied from cpu_v7_switch_mm */
+	mmid	\tmp0, \tmp0
+	asid	\tmp0, \tmp0
+	orr	\tmp1, \tmp2, \tmp0, lsl #(48 - 32)	@ upper 32-bits of pgd
+	mcrr	p15, 0, \tmp1, \tmp2, c2		@ set TTB 0
 	/* After this we cannot reference kernel allocations! */
-	mcrr	p15, 0, \tmp1, \tmp2, c2  @ set TTBR0
 	instr_sync
 	.endm
 #else
