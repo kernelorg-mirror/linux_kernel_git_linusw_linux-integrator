@@ -500,7 +500,17 @@ ENDPROC(__enable_mmu)
 ENTRY(__turn_mmu_on)
 	mov	r0, r0
 	instr_sync
-	mcr	p15, 0, r0, c1, c0, 0		@ write control reg
+	mcr	p15, 0, r0, c10, c4, 1 		@ unlock I-TLB
+	mcr	p15, 0, r0, c8, c5, 0		@ invalidate I-TLB
+	mrc	p15, 0, r0, c2, c0, 0		@ CPWAIT
+	mov	r0, r0
+	sub	pc, pc, #4
+	b	1f				@ branch to aligned code
+	.align	5
+1:	mcr	p15, 0, r0, c1, c0, 0		@ write control reg
+	mrc	p15, 0, r0, c2, c0, 0		@ CPWAIT
+	mov	r0, r0
+	sub	pc, pc, #4
 	mrc	p15, 0, r3, c0, c0, 0		@ read id reg
 	instr_sync
 	mov	r3, r3
