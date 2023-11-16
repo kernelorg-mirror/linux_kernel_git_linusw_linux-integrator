@@ -1158,6 +1158,10 @@ void __init setup_arch(char **cmdline_p)
 	/* Memory may have been removed so recalculate the bounds. */
 	adjust_lowmem_bounds();
 
+	pr_info("HIGHMEM starts at 0x%08x\n", (u32)high_memory);
+	pr_info("VMALLOC at 0x%08x-0x%08x\n", (u32)VMALLOC_START, (u32)VMALLOC_END);
+	pr_info("KERNEL at 0x%08x-0x%08x\n", (u32)KERNEL_OFFSET, (u32)(KERNEL_OFFSET+KERNEL_SECTION_SIZE));
+
 	early_ioremap_reset();
 
 	paging_init(mdesc);
