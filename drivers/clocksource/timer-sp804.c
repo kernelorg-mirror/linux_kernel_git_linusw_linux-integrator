@@ -20,6 +20,7 @@
 #include <linux/of_clk.h>
 #include <linux/of_irq.h>
 #include <linux/sched_clock.h>
+#include <linux/delay.h>
 
 #include "timer-sp.h"
 
@@ -97,10 +98,41 @@ static struct sp804_clkevt * __init sp804_clkevt_get(void __iomem *base)
 
 static struct sp804_clkevt *sched_clkevt;
 
-static u64 notrace sp804_read(void)
+static unsigned long sp804_read_raw(void)
 {
 	return ~readl_relaxed(sched_clkevt->value);
 }
+
+static u64 notrace sp804_read(void)
+{
+	return sp804_read_raw();
+}
+
+/*
+ * The delay timer is not available on all architectures, and
+ * we only use the SP804 as delay timer if the system lacks any
+ * other delay timer, so this is per-board opt-in.
+ */
+#ifdef CONFIG_ARM
+static struct delay_timer delay_timer;
+
+static void sp804_register_delay_timer(long rate)
+{
+	/* Machines that only have the SP804 timer, nothing else */
+	if (!(of_machine_is_compatible("arm,versatile-ab") ||
+	      of_machine_is_compatible("arm,versatile-pb") ||
+	      of_machine_is_compatible("arm,integrator-cp")))
+		return;
+
+	delay_timer.read_current_timer = sp804_read_raw;
+	delay_timer.freq = rate;
+	register_current_timer_delay(&delay_timer);
+}
+#else
+static void sp804_register_delay_timer(long rate)
+{
+}
+#endif
 
 static int __init sp804_clocksource_and_sched_clock_init(void __iomem *base,
 							 const char *name,
@@ -132,6 +164,7 @@ static int __init sp804_clocksource_and_sched_clock_init(void __iomem *base,
 	if (use_sched_clock) {
 		sched_clkevt = clkevt;
 		sched_clock_register(sp804_read, 32, rate);
+		sp804_register_delay_timer(rate);
 	}
 
 	return 0;
