@@ -395,6 +395,9 @@ static const unsigned int memcg_node_stat_items[] = {
 	NR_ANON_THPS,
 	NR_VMALLOC,
 	NR_KERNEL_STACK_KB,
+#ifdef CONFIG_DYNAMIC_STACK
+	NR_DYNAMIC_STACKS_FAULTS_KB,
+#endif
 	NR_PAGETABLE,
 	NR_SECONDARY_PAGETABLE,
 #ifdef CONFIG_SWAP
