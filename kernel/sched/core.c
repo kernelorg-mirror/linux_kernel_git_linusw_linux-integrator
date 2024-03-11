@@ -7035,6 +7035,7 @@ static void __sched notrace __schedule(int sched_mode)
 	rq = cpu_rq(cpu);
 	prev = rq->curr;
 
+	dynamic_stack(prev);
 	schedule_debug(prev, preempt);
 
 	klp_sched_try_switch(prev);
