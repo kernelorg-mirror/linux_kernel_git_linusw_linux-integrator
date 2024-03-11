@@ -1485,7 +1485,6 @@ config DYNAMIC_STACK
 	depends on HAVE_ARCH_DYNAMIC_STACK
 	depends on VMAP_STACK
 	depends on !KASAN
-	depends on !DEBUG_STACK_USAGE
 	depends on !STACK_GROWSUP
 	depends on !PREEMPT_RT
 	help
