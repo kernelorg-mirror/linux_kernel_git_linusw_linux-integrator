@@ -10,6 +10,7 @@
 #include <linux/magic.h>
 #include <linux/refcount.h>
 #include <linux/kasan.h>
+#include <linux/vmalloc.h>
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 
@@ -110,6 +111,26 @@ static inline void dynamic_stack(struct task_struct *tsk)
 
 static inline void set_task_stack_end_magic(struct task_struct *tsk) {}
 
+#ifdef CONFIG_DEBUG_STACK_USAGE
+static inline unsigned long stack_not_used(struct task_struct *p)
+{
+	struct vm_struct *vm_area = p->stack_vm_area;
+	unsigned long alloc_size = vm_area->nr_pages << PAGE_SHIFT;
+	unsigned long stack = (unsigned long)p->stack;
+	unsigned long *n = (unsigned long *)(stack + THREAD_SIZE - alloc_size);
+
+	while (!*n)
+		n++;
+
+	return (unsigned long)n - stack;
+}
+#else
+static inline unsigned long stack_not_used(struct task_struct *p)
+{
+	return 0;
+}
+#endif /* CONFIG_DEBUG_STACK_USAGE */
+
 #else /* !CONFIG_DYNAMIC_STACK */
 
 #define task_stack_end_corrupted(task) \
@@ -124,6 +145,15 @@ static inline bool dynamic_stack_fault(struct task_struct *tsk,
 	return false;
 }
 
+#ifdef CONFIG_DEBUG_STACK_USAGE
+unsigned long stack_not_used(struct task_struct *p);
+#else
+static inline unsigned long stack_not_used(struct task_struct *p)
+{
+	return 0;
+}
+#endif
+
 #endif /* CONFIG_DYNAMIC_STACK */
 
 static inline int object_is_on_stack(const void *obj)
@@ -135,15 +165,6 @@ static inline int object_is_on_stack(const void *obj)
 }
 
 extern void thread_stack_cache_init(void);
-
-#ifdef CONFIG_DEBUG_STACK_USAGE
-unsigned long stack_not_used(struct task_struct *p);
-#else
-static inline unsigned long stack_not_used(struct task_struct *p)
-{
-	return 0;
-}
-#endif
 
 static inline int kstack_end(void *addr)
 {
