@@ -584,37 +584,43 @@ static void ixp4xx_mdio_remove(void)
 	mdiobus_free(mdio_bus);
 }
 
-
 static void ixp4xx_adjust_link(struct net_device *dev)
 {
 	struct port *port = netdev_priv(dev);
 	struct phy_device *phydev = dev->phydev;
+	u32 val_rx = DEFAULT_RX_CNTRL0;
+	u32 val_tx = DEFAULT_TX_CNTRL0;
 
 	if (!phydev->link) {
 		if (port->speed) {
 			port->speed = 0;
-			printk(KERN_INFO "%s: link down\n", dev->name);
+			netdev_info(dev, "%s: link down\n", dev->name);
 		}
 		return;
 	}
 
-	if (port->speed == phydev->speed && port->duplex == phydev->duplex)
-		return;
-
 	port->speed = phydev->speed;
 	port->duplex = phydev->duplex;
 
-	if (port->duplex)
-		__raw_writel(DEFAULT_TX_CNTRL0 & ~TX_CNTRL0_HALFDUPLEX,
-			     &port->regs->tx_control[0]);
-	else
-		__raw_writel(DEFAULT_TX_CNTRL0 | TX_CNTRL0_HALFDUPLEX,
-			     &port->regs->tx_control[0]);
+	if (phydev->duplex == DUPLEX_FULL) {
+		bool pause_tx = false;
+		bool pause_rx = false;
+
+		phy_get_pause(phydev, &pause_tx, &pause_rx);
+		if (pause_rx)
+			val_rx |= RX_CNTRL0_PAUSE_EN;
+		if (pause_tx)
+			netdev_err(dev, "TX pause not supported, ignored\n");
+	} else {
+		val_tx |= TX_CNTRL0_HALFDUPLEX;
+	}
+
+	__raw_writel(val_rx, &port->regs->rx_control[0]);
+	__raw_writel(val_tx, &port->regs->tx_control[0]);
 
 	netdev_info(dev, "%s: link up, speed %u Mb/s, %s duplex\n",
 		    dev->name, port->speed, port->duplex ? "full" : "half");
 }
-
 
 static inline void debug_pkt(struct net_device *dev, const char *func,
 			     u8 *data, int len)
@@ -1009,6 +1015,37 @@ static void ixp4xx_get_drvinfo(struct net_device *dev,
 	strscpy(info->bus_info, "internal", sizeof(info->bus_info));
 }
 
+static void ixp4xx_get_pauseparam(struct net_device *netdev,
+				  struct ethtool_pauseparam *pparam)
+{
+	struct port *port = netdev_priv(netdev);
+	u32 val;
+
+	val = __raw_readl(&port->regs->rx_control[0]);
+
+	pparam->rx_pause = !!(val & RX_CNTRL0_PAUSE_EN);
+	pparam->tx_pause = false;
+	pparam->autoneg = true;
+}
+
+static int ixp4xx_set_pauseparam(struct net_device *netdev,
+				 struct ethtool_pauseparam *pparam)
+{
+	struct phy_device *phydev = netdev->phydev;
+
+	if (!pparam->autoneg)
+		return -EOPNOTSUPP;
+
+	/* We do not support TX pause */
+	if (pparam->tx_pause)
+		return -EOPNOTSUPP;
+
+	phy_set_asym_pause(phydev, pparam->rx_pause, pparam->tx_pause);
+
+	return 0;
+}
+
+
 static int ixp4xx_get_ts_info(struct net_device *dev,
 			      struct kernel_ethtool_ts_info *info)
 {
@@ -1042,6 +1079,8 @@ static const struct ethtool_ops ixp4xx_ethtool_ops = {
 	.get_drvinfo = ixp4xx_get_drvinfo,
 	.nway_reset = phy_ethtool_nway_reset,
 	.get_link = ethtool_op_get_link,
+	.get_pauseparam = ixp4xx_get_pauseparam,
+	.set_pauseparam = ixp4xx_set_pauseparam,
 	.get_ts_info = ixp4xx_get_ts_info,
 	.get_link_ksettings = phy_ethtool_get_link_ksettings,
 	.set_link_ksettings = phy_ethtool_set_link_ksettings,
