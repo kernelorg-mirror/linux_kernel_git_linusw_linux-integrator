@@ -47,10 +47,16 @@ static __always_inline void uaccess_restore(unsigned int flags)
 
 #elif defined(CONFIG_CPU_TTBR0_PAN)
 
+#define TTBR0  __ACCESS_CP15_64(0, c2)
+#define TTBR1  __ACCESS_CP15_64(1, c2)
+
 static __always_inline unsigned int uaccess_save_and_enable(void)
 {
 	unsigned int old_ttbcr = cpu_get_ttbcr();
+	u64 user_ttbr;
 
+	user_ttbr = current_user_ttbr();
+	write_sysreg(user_ttbr, TTBR0);
 	/*
 	 * Enable TTBR0 page table walks (T0SZ = 0, EDP0 = 0) and ASID from
 	 * TTBR0 (A1 = 0).
@@ -65,6 +71,7 @@ static inline void uaccess_restore(unsigned int flags)
 {
 	cpu_set_ttbcr(flags);
 	isb();
+	write_sysreg(0, TTBR0);
 }
 
 #else

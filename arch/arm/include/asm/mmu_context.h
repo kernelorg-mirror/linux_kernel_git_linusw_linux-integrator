@@ -55,7 +55,13 @@ static inline void a15_erratum_get_cpumask(int this_cpu, struct mm_struct *mm,
 }
 #endif /* CONFIG_ARM_ERRATA_798181 */
 
-#else	/* !CONFIG_CPU_HAS_ASID */
+#ifdef CONFIG_ARM_LPAE
+
+u64 current_user_ttbr(void) __attribute__((const));
+
+#endif /* CONFIG_ARM_LPAE */
+
+#else  /* !CONFIG_CPU_HAS_ASID */
 
 #ifdef CONFIG_MMU
 

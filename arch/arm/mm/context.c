@@ -81,6 +81,19 @@ void a15_erratum_get_cpumask(int this_cpu, struct mm_struct *mm,
  * any issues across a rollover).
  */
 #define cpu_set_reserved_ttbr0()
+
+/*
+ * Combine the ASID with the PGD to form the current TTBR value for
+ * userspace.
+ */
+u64 current_user_ttbr(void)
+{
+	struct mm_struct *mm = current->active_mm;
+
+	/* The context ID is in the upper 48 bits */
+	return atomic64_read(&mm->context.id) << 48 | virt_to_phys(mm->pgd);
+}
+
 #else
 static void cpu_set_reserved_ttbr0(void)
 {
