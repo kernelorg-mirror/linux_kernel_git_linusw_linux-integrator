@@ -17,7 +17,7 @@
 #include <asm/pgtable.h>
 #include <asm/proc-fns.h>
 #include <asm/compiler.h>
-
+#include <asm/cp15.h>
 #include <asm/extable.h>
 
 /*
@@ -43,6 +43,30 @@ static __always_inline void uaccess_restore(unsigned int flags)
 {
 	/* Restore the user access mask */
 	set_domain(flags);
+}
+
+#elif defined(CONFIG_ARM_KERNEL_SEPARATION)
+
+#define TTBR0  __ACCESS_CP15_64(0, c2)
+#define TTBR1  __ACCESS_CP15_64(1, c2)
+u64 current_user_ttbr(void) __attribute__((const));
+
+static __always_inline unsigned int uaccess_save_and_enable(void)
+{
+	u64 old_ttbr0 = read_sysreg(TTBR0);
+	u64 user_ttbr;
+
+	user_ttbr = current_user_ttbr();
+	write_sysreg(user_ttbr, TTBR0);
+	isb();
+
+	return (unsigned int)old_ttbr0;
+}
+
+static inline void uaccess_restore(unsigned int flags)
+{
+	write_sysreg((u64)flags, TTBR0);
+	isb();
 }
 
 #elif defined(CONFIG_CPU_TTBR0_PAN)
