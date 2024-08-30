@@ -2639,9 +2639,10 @@ static int stm32_cryp_probe(struct platform_device *pdev)
 	ret = stm32_cryp_dma_init(cryp);
 	switch (ret) {
 	case 0:
+		dev_info(dev, "DMA mode activated\n");
 		break;
 	case -ENODEV:
-		dev_dbg(dev, "DMA mode not available\n");
+		dev_info(dev, "DMA mode not available\n");
 		break;
 	default:
 		goto err_dma;
