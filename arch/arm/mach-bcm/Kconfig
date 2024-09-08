@@ -217,6 +217,11 @@ if ARCH_BCMBCA
 
 config ARCH_BCMBCA_CORTEXA7
 	bool "Cortex-A7 SoCs"
+	select ARCH_HAS_RESET_CONTROLLER
+	select ARM_GLOBAL_TIMER
+	select CACHE_L2X0
+	select HAVE_ARM_TWD if SMP
+	select HAVE_ARM_SCU if SMP
 	help
 	  Say Y if you intend to run the kernel on a Broadcom Broadband ARM A7
 	  based chipset.
