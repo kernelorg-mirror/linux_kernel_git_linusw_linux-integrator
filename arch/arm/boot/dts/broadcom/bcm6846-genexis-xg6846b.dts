@@ -56,6 +56,19 @@
 	};
 };
 
+&usb_phy {
+	brcm,ioc = <1>;
+	status = "okay";
+};
+
+&ehci0 {
+	status = "okay";
+};
+
+&ohci0 {
+	status = "okay";
+};
+
 &gpio0 {
 	status = "okay";
 };

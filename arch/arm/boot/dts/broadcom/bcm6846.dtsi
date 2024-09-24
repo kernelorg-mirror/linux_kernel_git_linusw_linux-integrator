@@ -5,6 +5,7 @@
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/phy/phy.h>
 
 / {
 	compatible = "brcm,bcm6846", "brcm,bcmbca";
@@ -77,6 +78,114 @@
 		cpu_off = <0x01>;
 		cpu_on = <0x02>;
 	};
+
+
+	soc {
+		compatible = "simple-bus";
+		// FIXME: I have no idea how big this area is
+		ranges = <0x00000000 0x80000000 0x10000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		usb_phy: usb-phy@c200 {
+			compatible = "brcm,bcmbca-usb-phy";
+			reg = <0xc200 0x100>;
+			reg-nams = "ctrl";
+			dr_mode = "host";
+			// brcm,has-xhci;
+			brcm,has-eohci;
+			interrupts = <GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>;
+			#phy-cells = <1>;
+			// status = "disabled";
+		};
+
+		ehci0: usb@c300 {
+			compatible = "ehci-generic";
+			reg = <0xc300 0x100>;
+			interrupts = <GIC_SPI 125 IRQ_TYPE_LEVEL_HIGH>;
+			phys = <&usb_phy PHY_TYPE_USB2>;
+			status = "disabled";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ehci0_port1: port@1 {
+				reg = <1>;
+				#trigger-source-cells = <0>;
+			};
+
+			ehci0_port2: port@2 {
+				reg = <2>;
+				#trigger-source-cells = <0>;
+			};
+		};
+
+		ohci0: usb@c400 {
+			compatible = "ohci-generic";
+			reg = <0xc400 0x100>;
+			interrupts = <GIC_SPI 124 IRQ_TYPE_LEVEL_HIGH>;
+			phys = <&usb_phy PHY_TYPE_USB2>;
+			status = "disabled";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ohci0_port1: port@1 {
+				reg = <1>;
+				#trigger-source-cells = <0>;
+			};
+
+			ohci0_port2: port@2 {
+				reg = <2>;
+				#trigger-source-cells = <0>;
+			};
+		};
+
+		ehci1: usb@c500 {
+			compatible = "ehci-generic";
+			reg = <0xc500 0x100>;
+			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
+			phys = <&usb_phy PHY_TYPE_USB2>;
+			status = "disabled";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ehci1_port1: port@1 {
+				reg = <1>;
+				#trigger-source-cells = <0>;
+			};
+
+			ehci1_port2: port@2 {
+				reg = <2>;
+				#trigger-source-cells = <0>;
+			};
+		};
+
+		ohci1: usb@c600 {
+			compatible = "ohci-generic";
+			reg = <0x8000c600 0x100>;
+			interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
+			phys = <&usb_phy PHY_TYPE_USB2>;
+			status = "disabled";
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ohci1_port1: port@1 {
+				reg = <1>;
+				#trigger-source-cells = <0>;
+			};
+
+			ohci1_port2: port@2 {
+				reg = <2>;
+				#trigger-source-cells = <0>;
+			};
+		};
+
+		/* Is there XHCI at 0xd000? */
+	};
+
 
 	axi@81000000 {
 		compatible = "simple-bus";
