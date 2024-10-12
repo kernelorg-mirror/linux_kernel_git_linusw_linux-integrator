@@ -98,6 +98,7 @@ static int __init scu_a9_enable(void)
 
 static const struct of_device_id bcm63138_bootlut_ids[] = {
 	{ .compatible = "brcm,bcm63138-bootlut", },
+	{ .compatible = "brcm,bcm6846-bootlut", },
 	{ /* sentinel */ },
 };
 
@@ -165,4 +166,9 @@ static const struct smp_operations bcm63138_smp_ops __initconst = {
 	.smp_boot_secondary	= bcm63138_smp_boot_secondary,
 };
 
+static const struct smp_operations bcm6846_smp_ops __initconst = {
+	.smp_boot_secondary	= bcm63138_smp_boot_secondary,
+};
+
 CPU_METHOD_OF_DECLARE(bcm63138_smp, "brcm,bcm63138", &bcm63138_smp_ops);
+CPU_METHOD_OF_DECLARE(bcm6846_smp, "brcm,bcm6846", &bcm6846_smp_ops);

@@ -22,7 +22,8 @@
 			compatible = "arm,cortex-a7";
 			reg = <0x0>;
 			next-level-cache = <&L2_0>;
-			enable-method = "psci";
+			enable-method = "brcm,bcm6846";
+			// enable-method = "psci";
 		};
 
 		CA7_1: cpu@1 {
@@ -30,7 +31,9 @@
 			compatible = "arm,cortex-a7";
 			reg = <0x1>;
 			next-level-cache = <&L2_0>;
-			enable-method = "psci";
+			enable-method = "brcm,bcm6846";
+			resets = <&pmc0 4 1>;
+			// enable-method = "psci";
 		};
 
 		L2_0: l2-cache0 {
@@ -255,6 +258,28 @@
 			clocks = <&periph_clk>;
 			clock-names = "apb_pclk";
 			#dma-cells = <2>;
+		};
+
+		/* PMC0 at ffb00000 */
+		pmc0: reset-controller@300000 {
+			compatible = "brcm,bcm63138-pmb";
+			reg = <0x300000 0x10>;
+			#reset-cells = <2>;
+		};
+
+		/* Proc mon at ffb20000 */
+
+		/* PMB0 at ffb20100 */
+		pmb0: reset-controller@320100 {
+			compatible = "brcm,bcm63138-pmb";
+			reg = <0x320100 0x10>;
+			#reset-cells = <2>;
+		};
+
+		/* Bootlut at ffff0000 */
+		bootlut@7f0000 {
+			compatible = "brcm,bcm6846-bootlut";
+			reg = <0x7f0000 0x1000>;
 		};
 	};
 };

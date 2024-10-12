@@ -152,6 +152,8 @@ int bcm63xx_pmb_power_on_cpu(struct device_node *dn)
 		goto out;
 	}
 
+	goto power_up;
+
 	/* Power on PLL */
 	ret = bpcm_rd(base, addr, ARM_PWR_CONTROL(cpu), &val);
 	if (ret)
@@ -204,6 +206,7 @@ int bcm63xx_pmb_power_on_cpu(struct device_node *dn)
 	if (ret)
 		goto out;
 
+power_up:
 	/* De-assert CPU reset */
 	ctrl |= CPU_RESET_N(cpu);
 
