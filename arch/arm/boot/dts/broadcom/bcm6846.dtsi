@@ -22,7 +22,8 @@
 			compatible = "arm,cortex-a7";
 			reg = <0x0>;
 			next-level-cache = <&L2_0>;
-			enable-method = "psci";
+			enable-method = "spin-table";
+			cpu-release-addr = <0xff800568>;
 		};
 
 		CA7_1: cpu@1 {
@@ -30,7 +31,8 @@
 			compatible = "arm,cortex-a7";
 			reg = <0x1>;
 			next-level-cache = <&L2_0>;
-			enable-method = "psci";
+			enable-method = "spin-table";
+			cpu-release-addr = <0xff800568>;
 		};
 
 		L2_0: l2-cache0 {
