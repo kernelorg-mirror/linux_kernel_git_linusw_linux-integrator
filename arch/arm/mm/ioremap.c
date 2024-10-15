@@ -23,6 +23,7 @@
  */
 #include <linux/module.h>
 #include <linux/errno.h>
+#include <linux/kasan.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/io.h>
@@ -125,6 +126,12 @@ void __check_vmalloc_seq(struct mm_struct *mm)
 		       pgd_offset_k(VMALLOC_START),
 		       sizeof(pgd_t) * (pgd_index(VMALLOC_END) -
 					pgd_index(VMALLOC_START)));
+		if (IS_ENABLED(CONFIG_KASAN_VMALLOC)) {
+			memcpy(pgd_offset(mm, (unsigned long)kasan_mem_to_shadow((void *)VMALLOC_START)),
+			       pgd_offset_k((unsigned long)kasan_mem_to_shadow((void *)VMALLOC_START)),
+			       sizeof(pgd_t) * (pgd_index((unsigned long)kasan_mem_to_shadow((void *)VMALLOC_END)) -
+						pgd_index((unsigned long)kasan_mem_to_shadow((void *)VMALLOC_START))));
+		}
 		/*
 		 * Use a store-release so that other CPUs that observe the
 		 * counter's new value are guaranteed to see the results of the
