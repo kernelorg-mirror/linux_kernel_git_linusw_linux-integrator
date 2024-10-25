@@ -274,7 +274,7 @@ noinstr irqentry_state_t irqentry_enter(struct pt_regs *regs)
 		 * as in irqentry_enter_from_user_mode().
 		 */
 		lockdep_hardirqs_off(CALLER_ADDR0);
-		ct_irq_enter();
+		//ct_irq_enter();
 		instrumentation_begin();
 		kmsan_unpoison_entry_regs(regs);
 		trace_hardirqs_off_finish();
@@ -344,7 +344,7 @@ noinstr void irqentry_exit(struct pt_regs *regs, irqentry_state_t state)
 			trace_hardirqs_on_prepare();
 			lockdep_hardirqs_on_prepare();
 			instrumentation_end();
-			ct_irq_exit();
+			//ct_irq_exit();
 			lockdep_hardirqs_on(CALLER_ADDR0);
 			return;
 		}
@@ -361,8 +361,8 @@ noinstr void irqentry_exit(struct pt_regs *regs, irqentry_state_t state)
 		 * IRQ flags state is correct already. Just tell RCU if it
 		 * was not watching on entry.
 		 */
-		if (state.exit_rcu)
-			ct_irq_exit();
+		//if (state.exit_rcu)
+			//ct_irq_exit();
 	}
 }
 
@@ -375,7 +375,7 @@ irqentry_state_t noinstr irqentry_nmi_enter(struct pt_regs *regs)
 	__nmi_enter();
 	lockdep_hardirqs_off(CALLER_ADDR0);
 	lockdep_hardirq_enter();
-	ct_nmi_enter();
+	//ct_nmi_enter();
 
 	instrumentation_begin();
 	kmsan_unpoison_entry_regs(regs);
@@ -396,7 +396,7 @@ void noinstr irqentry_nmi_exit(struct pt_regs *regs, irqentry_state_t irq_state)
 	}
 	instrumentation_end();
 
-	ct_nmi_exit();
+	//ct_nmi_exit();
 	lockdep_hardirq_exit();
 	if (irq_state.lockdep)
 		lockdep_hardirqs_on(CALLER_ADDR0);

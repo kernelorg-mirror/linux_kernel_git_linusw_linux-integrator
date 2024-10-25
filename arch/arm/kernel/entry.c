@@ -12,22 +12,26 @@ static irqentry_state_t kernel_nmi_state;
 
 noinstr void arm_irqentry_enter_from_user_mode(struct pt_regs *regs)
 {
+	user_enter_callable();
 	user_irq_state = irqentry_enter(regs);
 }
 
 noinstr void arm_irqentry_exit_to_user_mode(struct pt_regs *regs)
 {
 	irqentry_exit(regs, user_irq_state);
+	user_exit_callable();
 }
 
 noinstr void arm_irqentry_enter_from_kernel_mode(struct pt_regs *regs)
 {
+	user_enter_callable();
 	kernel_irq_state = irqentry_enter(regs);
 }
 
 noinstr void arm_irqentry_exit_to_kernel_mode(struct pt_regs *regs)
 {
 	irqentry_exit(regs, kernel_irq_state);
+	user_exit_callable();
 }
 
 noinstr void arm_irqentry_nmi_enter_from_user_mode(struct pt_regs *regs)
