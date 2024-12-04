@@ -29,11 +29,13 @@ properties:
               - intel,ixdpg425
               - iom,nas-100d
               - linksys,nslu2
+              - linksys,wrt300nv2
+              - linksys,wrv54g
               - netgear,wg302v1
               - netgear,wg302v2
+              - netgear,wgr826v
               - usr,8200
               - welltech,epbx100
-              - linksys,wrv54g
               - gemtek,gtwx5715
           - const: intel,ixp42x
       - items:
