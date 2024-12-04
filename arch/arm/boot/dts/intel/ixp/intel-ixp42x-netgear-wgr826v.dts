@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: ISC
+/*
+ * Device Tree file for the IXP422-based Netgear WGR826V
+ */
+
+/dts-v1/;
+
+#include "intel-ixp42x.dtsi"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "Netgear WGR826V";
+	compatible = "netgear,wgr826v", "intel,ixp42x";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	memory@0 {
+		/* 32 MB SDRAM according to boot arguments */
+		device_type = "memory";
+		reg = <0x00000000 0x02000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyS0,115200n8";
+		stdout-path = "uart1:115200n8";
+	};
+
+	aliases {
+		/* These are switched around */
+		serial0 = &uart1;
+		serial1 = &uart0;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led-checkmark {
+			color = <LED_COLOR_ID_GREEN>;
+			function = "checkmark";
+			gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+			linux,default-trigger = "heartbeat";
+		};
+		led-telephone-1 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = "telephone1";
+			gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+		led-telephone-2 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = "telephone2";
+			gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		status = "disabled";
+
+		button-reset {
+			wakeup-source;
+			linux,code = <KEY_RESTART>;
+			label = "reset";
+			gpios = <&gpio0 11 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	spi {
+		compatible = "spi-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		sck-gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
+		mosi-gpios = <&gpio0 10 GPIO_ACTIVE_HIGH>;
+		miso-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+		cs-gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
+		num-chipselects = <1>;
+
+		switch@0 {
+			compatible = "micrel,ks8995";
+			reg = <0>;
+			spi-max-frequency = <5000000>;
+			reset-gpios = <&gpio0 12 GPIO_ACTIVE_LOW>;
+			/*
+			 * It appears that when Netgear integrated this
+			 * switch, they intended it to be controlled over
+			 * SPI as everything is connected, but they failed to
+			 * provide a way to pull PS[1:0] to 10 to bring it
+			 * into SPI mode. Maybe GPIO 8 was intended for this
+			 * but it does not work. The KS8995 remains in EEPROM
+			 * boot mode.
+			 */
+			status = "disabled";
+		};
+	};
+
+	soc {
+		bus@c4000000 {
+			flash@0,0 {
+				compatible = "intel,ixp4xx-flash", "cfi-flash";
+				bank-width = <2>;
+				/*
+				 * 16 MB of Flash in 64 0x20000 sized blocks
+				 * mapped in at CS0.
+				 */
+				reg = <0 0x00000000 0x1000000>;
+
+				/* Configure expansion bus to allow writes */
+				intel,ixp4xx-eb-write-enable = <1>;
+
+				partitions {
+					compatible = "redboot-fis";
+					fis-index-block = <0x7f>;
+				};
+			};
+		};
+
+		pci@c0000000 {
+			status = "okay";
+
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0xf800 0 0 7>;
+			interrupt-map =
+			/* IDSEL 1 */
+			<0x0800 0 0 1 &gpio0 0 IRQ_TYPE_LEVEL_LOW>, /* INT A on slot 1 is irq 0 */
+			<0x0800 0 0 2 &gpio0 0 IRQ_TYPE_LEVEL_LOW>, /* INT B on slot 1 is irq 0 */
+			<0x0800 0 0 3 &gpio0 0 IRQ_TYPE_LEVEL_LOW>, /* INT C on slot 1 is irq 0 */
+			<0x0800 0 0 4 &gpio0 0 IRQ_TYPE_LEVEL_LOW>, /* INT D on slot 1 is irq 0 */
+			/* IDSEL 2 guess on IRQ */
+			<0x1000 0 0 1 &gpio0 2 IRQ_TYPE_LEVEL_LOW>, /* INT A on slot 2 is irq 2 */
+			<0x1000 0 0 2 &gpio0 2 IRQ_TYPE_LEVEL_LOW>, /* INT B on slot 2 is irq 2 */
+			<0x1000 0 0 3 &gpio0 2 IRQ_TYPE_LEVEL_LOW>, /* INT C on slot 2 is irq 2 */
+			<0x1000 0 0 4 &gpio0 2 IRQ_TYPE_LEVEL_LOW>; /* INT D on slot 2 is irq 2 */
+		};
+
+		gpio@c8004000 {
+			/*
+			 * GPIO 0 is some kind of IRQ | PCI IRQ likely
+			 * GPIO 1 checkmark LED
+			 * GPIO 2 is some kind of IRQ | PCI IRQ likely
+			 * GPIO 3 is some kind of IRQ | PCI IRQ likely
+			 * GPIO 4 phone1 LED
+			 * GPIO 5 phone2 LED
+			 * GPIO 6 is some kind of IRQ | PCI IRQ likely
+			 * GPIO 7 goes to SPIS_N (CS)
+			 * GPIO 8 pulled high ?
+			 * GPIO 9 goes to SPIC/SCL SPI input clock
+			 * GPIO 10 goes to SPID/SDA SPI serial data out
+			 * GPIO 11 is RESET button
+			 * GPIO 12 goes to RST_N
+			 * GPIO 13 goes to SPIQ SPI serial data in
+			 * GPIO 14 CLOCK OUT
+			 * GPIO 15 CLOCK OUT
+			 */
+
+			/* Both clock outputs are used */
+			intel,ixp4xx-gpio14-clkout;
+			intel,ixp4xx-gpio15-clkout;
+
+			unknown-hog {
+				gpio-hog;
+				gpios = <8 GPIO_ACTIVE_HIGH>;
+				output-high;
+				line-name = "unknown-hog";
+			};
+			clock-hog {
+				gpio-hog;
+				gpios = <14 GPIO_ACTIVE_HIGH>;
+				output-high;
+				line-name = "ks8995-clock";
+			};
+		};
+
+		ethernet@c8009000 {
+			status = "okay";
+			queue-rx = <&qmgr 3>;
+			queue-txready = <&qmgr 20>;
+			phy-mode = "rgmii";
+			phy-handle = <&phy1>;
+
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				/* 1, 2, 3, 4 and 5 are ports on the KS8995 switch */
+				phy1: ethernet-phy@1 {
+					/* LAN3 */
+					reg = <1>;
+				};
+				phy2: ethernet-phy@2 {
+					/* LAN2 */
+					reg = <2>;
+				};
+				phy3: ethernet-phy@3 {
+					/* LAN1 */
+					reg = <3>;
+				};
+				/* PHY4 is unused */
+				phy5: ethernet-phy@5 {
+					/* INTERNET */
+					reg = <5>;
+				};
+			};
+		};
+
+		/* EthC */
+		ethernet@c800a000 {
+			status = "okay";
+			queue-rx = <&qmgr 4>;
+			queue-txready = <&qmgr 21>;
+			phy-mode = "rgmii";
+			phy-handle = <&phy5>;
+		};
+	};
+};
