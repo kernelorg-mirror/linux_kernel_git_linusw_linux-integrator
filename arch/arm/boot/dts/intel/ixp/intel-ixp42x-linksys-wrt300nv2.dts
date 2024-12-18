@@ -1,0 +1,253 @@
+// SPDX-License-Identifier: ISC
+/*
+ * Device Tree file for the IXP422-based Linksys WRT300N v2
+ */
+
+/dts-v1/;
+
+#include "intel-ixp42x.dtsi"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "Linksys WRT300N v2";
+	compatible = "linksys,wrt300v2", "intel,ixp42x";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	memory@0 {
+		/* 16 MB SDRAM */
+		device_type = "memory";
+		reg = <0x00000000 0x01000000>;
+	};
+
+	chosen {
+		bootargs = "console=ttyS0,115200n8";
+		stdout-path = "uart1:115200n8";
+	};
+
+	aliases {
+		/* These are switched around */
+		serial0 = &uart1;
+		serial1 = &uart0;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led_power_amber: led-0 {
+			color = <LED_COLOR_ID_AMBER>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+		led_power_green: led-1 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+		led_wlan_green: led-2 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WLAN;
+			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+			linux,default-trigger = "phy0tx";
+		};
+		/* 3, 4 not used for LED */
+		led_security_green: led-6 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WPS;
+			gpios = <&gpio0 6 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+		led_security_amber: led-7 {
+			color = <LED_COLOR_ID_AMBER>;
+			function = LED_FUNCTION_WPS;
+			gpios = <&gpio0 7 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+		/* 8, 9, 10, 11, 12, 13, 14, 15 not used for LED */
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+
+		button-reset {
+			wakeup-source;
+			linux,code = <KEY_RESTART>;
+			label = "reset";
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+		};
+		/*
+		 * Turn on wireless security, I guess from way back when it
+		 * wasn't compulsory.
+		 */
+		button-lock {
+			wakeup-source;
+			linux,code = <KEY_WLAN>;
+			label = "lock";
+			gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	soc {
+		bus@c4000000 {
+			flash@0,0 {
+				compatible = "intel,ixp4xx-flash", "cfi-flash";
+				bank-width = <2>;
+				/*
+				 * 4 MB of Flash in 64 0x10000 sized blocks
+				 * mapped in at CS0.
+				 */
+				reg = <0 0x00000000 0x400000>;
+
+				/* Configure expansion bus to allow writes */
+				intel,ixp4xx-eb-write-enable = <1>;
+
+				/* TODO: The nvmem provider requires this, why? dtc complains */
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				partitions {
+					compatible = "fixed-partitions";
+					/* Partition info from a boot log */
+					#address-cells = <1>;
+					#size-cells = <1>;
+					partition@0 {
+						label = "boot";
+						reg = <0x0 0x60000>;
+						read-only;
+
+						nvmem-layout {
+							compatible = "fixed-layout";
+							#address-cells = <1>;
+							#size-cells = <1>;
+
+							macaddr: macaddr@5ffa0 {
+								reg = <0x5ffa0 0x6>;
+							};
+						};
+					};
+					partition@60000 {
+						label = "linux";
+						reg = <0x60000 0x350000>;
+						read-write;
+					};
+					partition@3b0000 {
+						label = "lang";
+						reg = <0x3b0000 0x40000>;
+						read-only;
+					};
+					partition@3f0000 {
+						label = "nvram";
+						reg = <0x3f0000 0x10000>;
+						read-only;
+					};
+				};
+			};
+		};
+
+		pci@c0000000 {
+			status = "okay";
+
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0xf800 0 0 7>;
+			interrupt-map =
+			/* IDSEL 1 */
+			<0x0800 0 0 1 &gpio0 8 IRQ_TYPE_LEVEL_LOW>, /* INT A on slot 1 is irq 8 */
+			<0x0800 0 0 2 &gpio0 8 IRQ_TYPE_LEVEL_LOW>, /* INT B on slot 1 is irq 8 */
+			<0x0800 0 0 3 &gpio0 8 IRQ_TYPE_LEVEL_LOW>, /* INT C on slot 1 is irq 8 */
+			<0x0800 0 0 4 &gpio0 8 IRQ_TYPE_LEVEL_LOW>, /* INT D on slot 1 is irq 8 */
+			/* IDSEL 2 guess on IRQ */
+			<0x1000 0 0 1 &gpio0 9 IRQ_TYPE_LEVEL_LOW>, /* INT A on slot 2 is irq 9 */
+			<0x1000 0 0 2 &gpio0 9 IRQ_TYPE_LEVEL_LOW>, /* INT B on slot 2 is irq 9 */
+			<0x1000 0 0 3 &gpio0 9 IRQ_TYPE_LEVEL_LOW>, /* INT C on slot 2 is irq 9 */
+			<0x1000 0 0 4 &gpio0 9 IRQ_TYPE_LEVEL_LOW>; /* INT D on slot 2 is irq 9 */
+		};
+
+		/* EthB connected directly to the Marvell MV88E6060 DSA switch */
+		ethernet@c8009000 {
+			status = "okay";
+			queue-rx = <&qmgr 3>;
+			queue-txready = <&qmgr 20>;
+			nvmem-cells = <&macaddr>;
+			nvmem-cell-names = "mac-address";
+			phy-mode = "rgmii";
+			fixed-link {
+				speed = <100>;
+				full-duplex;
+			};
+
+
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				/* Realtek RTL8201CP used by the WAN port */
+				phy1: ethernet-phy@1 {
+					reg = <1>;
+				};
+
+				/* The switch uses MDIO addresses 16 thru 31 */
+				switch@16 {
+					compatible = "marvell,mv88e6060";
+					status = "disabled";
+					reg = <16>;
+
+					ports {
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						port@0 {
+							reg = <0>;
+							label = "lan1";
+							// phy-handle = <&phy24>;
+						};
+
+						port@1 {
+							reg = <1>;
+							label = "lan2";
+							// phy-handle = <&phy25>;
+						};
+
+						port@2 {
+							reg = <2>;
+							label = "lan3";
+							// phy-handle = <&phy26>;
+						};
+
+						port@3 {
+							reg = <3>;
+							label = "lan4";
+							// phy-handle = <&phy27>;
+						};
+
+						port@5 {
+							/* Port 5 is the CPU port according to the MV88E6060 datasheet */
+							reg = <5>;
+							phy-mode = "rgmii-id";
+							ethernet = <&ethc>;
+							label = "cpu";
+							fixed-link {
+								speed = <100>;
+								full-duplex;
+							};
+						};
+					};
+				};
+			};
+		};
+
+		/* EthC LAN connected to the Realtek RTL8201 WAN PHY */
+		ethc: ethernet@c800a000 {
+			status = "okay";
+			queue-rx = <&qmgr 4>;
+			queue-txready = <&qmgr 21>;
+			nvmem-cells = <&macaddr>;
+			nvmem-cell-names = "mac-address";
+			nvmem-mac-minor-offset = <1>;
+			phy-mode = "rgmii";
+			phy-handle = <&phy1>;
+		};
+	};
+};
