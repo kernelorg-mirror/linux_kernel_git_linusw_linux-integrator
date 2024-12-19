@@ -29,6 +29,18 @@ properties:
   nvmem-cell-names:
     const: mac-address
 
+  nvmem-mac-minor-offset:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 255
+    description:
+      When a MAC address for a device with multiple ethernet interface
+      is stored in non-volatile memory, the address is often offsetted
+      for different interfaces by increasing the lowermost byte for each
+      interface subsequent to the first in order to save space in NVMEM.
+      This property can be used to add that offset when several
+      interfaces refer to the same NVMEM cell.
+
   phy-connection-type:
     description:
       Specifies interface type between the Ethernet device and a physical
