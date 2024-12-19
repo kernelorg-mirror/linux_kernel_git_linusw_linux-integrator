@@ -64,6 +64,7 @@ int of_get_mac_address_nvmem(struct device_node *np, u8 *addr)
 	struct nvmem_cell *cell;
 	const void *mac;
 	size_t len;
+	u32 offset;
 	int ret;
 
 	/* Try lookup by device first, there might be a nvmem_cell_lookup
@@ -72,7 +73,7 @@ int of_get_mac_address_nvmem(struct device_node *np, u8 *addr)
 	if (pdev) {
 		ret = nvmem_get_mac_address(&pdev->dev, addr);
 		put_device(&pdev->dev);
-		return ret;
+		goto add_offset_exit;
 	}
 
 	cell = of_nvmem_cell_get(np, "mac-address");
@@ -92,8 +93,13 @@ int of_get_mac_address_nvmem(struct device_node *np, u8 *addr)
 
 	memcpy(addr, mac, ETH_ALEN);
 	kfree(mac);
+	ret = 0;
 
-	return 0;
+add_offset_exit:
+	if (!ret && !of_property_read_u32(np, "nvmem-mac-minor-offset", &offset))
+		addr[ETH_ALEN - 1] += offset;
+
+	return ret;
 }
 EXPORT_SYMBOL(of_get_mac_address_nvmem);
 
