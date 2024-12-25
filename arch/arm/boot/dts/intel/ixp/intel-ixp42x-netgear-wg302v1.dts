@@ -29,6 +29,9 @@
 	};
 
 	aliases {
+		led-boot = &test_led;
+		led-failsafe = &test_led;
+		led-upgrade = &test_led;
 		/* These are switched around */
 		serial0 = &uart1;
 	};
