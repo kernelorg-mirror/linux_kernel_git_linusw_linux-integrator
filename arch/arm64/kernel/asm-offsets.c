@@ -95,7 +95,9 @@ int main(void)
   DEFINE(FREGS_SIZE,		sizeof(struct __arch_ftrace_regs));
   BLANK();
 #endif
+#ifdef CONFIG_SMP
   DEFINE(CPU_BOOT_TASK,		offsetof(struct secondary_data, task));
+#endif
   BLANK();
   DEFINE(FTR_OVR_VAL_OFFSET,	offsetof(struct arm64_ftr_override, val));
   DEFINE(FTR_OVR_MASK_OFFSET,	offsetof(struct arm64_ftr_override, mask));

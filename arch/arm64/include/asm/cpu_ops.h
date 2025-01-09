@@ -49,9 +49,13 @@ struct cpu_operations {
 int __init init_cpu_ops(int cpu);
 extern const struct cpu_operations *get_cpu_ops(int cpu);
 
+#ifdef CONFIG_SMP
 static inline void __init init_bootcpu_ops(void)
 {
 	init_cpu_ops(0);
 }
+#else
+static inline void __init init_bootcpu_ops(void) {}
+#endif
 
 #endif /* ifndef __ASM_CPU_OPS_H */

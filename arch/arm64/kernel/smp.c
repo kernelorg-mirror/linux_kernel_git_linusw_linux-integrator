@@ -181,21 +181,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	return -EIO;
 }
 
-static void init_gic_priority_masking(void)
-{
-	u32 cpuflags;
-
-	if (WARN_ON(!gic_enable_sre()))
-		return;
-
-	cpuflags = read_sysreg(daif);
-
-	WARN_ON(!(cpuflags & PSR_I_BIT));
-	WARN_ON(!(cpuflags & PSR_F_BIT));
-
-	gic_write_pmr(GIC_PRIO_IRQON | GIC_PRIO_PSR_I_SET);
-}
-
+void __init init_gic_priority_masking(void);
 /*
  * This is the secondary CPU boot entry.  We're using this CPUs
  * idle thread stack, but a set of temporary page tables.
@@ -450,27 +436,6 @@ void __init smp_cpus_done(unsigned int max_cpus)
 	setup_system_features();
 	setup_user_features();
 	mark_linear_text_alias_ro();
-}
-
-void __init smp_prepare_boot_cpu(void)
-{
-	/*
-	 * The runtime per-cpu areas have been allocated by
-	 * setup_per_cpu_areas(), and CPU0's boot time per-cpu area will be
-	 * freed shortly, so we must move over to the runtime per-cpu area.
-	 */
-	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
-
-	cpuinfo_store_boot_cpu();
-	setup_boot_cpu_features();
-
-	/* Conditionally switch to GIC PMR for interrupt masking */
-	if (system_uses_irq_prio_masking())
-		init_gic_priority_masking();
-
-	kasan_init_hw_tags();
-	/* Init percpu seeds for random tags after cpus are set up. */
-	kasan_init_sw_tags();
 }
 
 /*
@@ -834,10 +799,9 @@ static const char *ipi_types[MAX_IPI] __tracepoint_string = {
 
 static void smp_cross_call(const struct cpumask *target, unsigned int ipinr);
 
-unsigned long irq_err_count;
-
 int arch_show_interrupts(struct seq_file *p, int prec)
 {
+	extern unsigned long irq_err_count;
 	unsigned int cpu, i;
 
 	for (i = 0; i < MAX_IPI; i++) {

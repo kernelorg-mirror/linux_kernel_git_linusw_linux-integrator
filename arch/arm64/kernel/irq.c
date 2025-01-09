@@ -39,6 +39,8 @@ DECLARE_PER_CPU(unsigned long *, irq_shadow_call_stack_ptr);
 DEFINE_PER_CPU(unsigned long *, irq_shadow_call_stack_ptr);
 #endif
 
+unsigned long irq_err_count;
+
 static void init_irq_scs(void)
 {
 	int cpu;

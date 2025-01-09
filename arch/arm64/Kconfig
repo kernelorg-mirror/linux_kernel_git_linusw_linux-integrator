@@ -141,14 +141,14 @@ config ARM64
 	select FUNCTION_ALIGNMENT_8B if DYNAMIC_FTRACE_WITH_CALL_OPS
 	select GENERIC_ALLOCATOR
 	select GENERIC_ARCH_TOPOLOGY
-	select GENERIC_CLOCKEVENTS_BROADCAST
+	select GENERIC_CLOCKEVENTS_BROADCAST if SMP
 	select GENERIC_CPU_AUTOPROBE
 	select GENERIC_CPU_DEVICES
 	select GENERIC_CPU_VULNERABILITIES
 	select GENERIC_EARLY_IOREMAP
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_IOREMAP
-	select GENERIC_IRQ_IPI
+	select GENERIC_IRQ_IPI if SMP
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_IRQ_SHOW_LEVEL
@@ -371,7 +371,24 @@ config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
 config SMP
-	def_bool y
+	bool "Symmetric Multi-Processing"
+	default y
+	help
+	  This enables support for systems with more than one CPU. If you have
+	  a system with only one CPU, say N. If you have a system with more
+	  than one CPU, say Y.
+
+	  If you say N here, the kernel will run on uni- and multiprocessor
+	  machines, but will use only one CPU of a multiprocessor machine. If
+	  you say Y here, the kernel will run on many, but not all,
+	  uniprocessor machines. On a uniprocessor machine, the kernel
+	  will run faster if you say N here.
+
+	  See also <file:Documentation/arch/x86/i386/IO-APIC.rst>,
+	  <file:Documentation/admin-guide/lockup-watchdogs.rst> and the SMP-HOWTO available at
+	  <http://tldp.org/HOWTO/SMP-HOWTO.html>.
+
+	  If you don't know what to do here, say Y.
 
 config KERNEL_MODE_NEON
 	def_bool y
@@ -1498,8 +1515,8 @@ config SCHED_SMT
 	  places. If unsure say N here.
 
 config NR_CPUS
-	int "Maximum number of CPUs (2-4096)"
-	range 2 4096
+	int "Maximum number of CPUs (1-4096)"
+	range 1 4096
 	default "512"
 
 config HOTPLUG_CPU

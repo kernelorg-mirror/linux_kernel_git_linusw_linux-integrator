@@ -350,6 +350,7 @@ SYM_FUNC_END(init_kernel_el)
 	 * This provides a "holding pen" for platforms to hold all secondary
 	 * cores are held until we're ready for them to initialise.
 	 */
+#ifdef CONFIG_SMP
 SYM_FUNC_START(secondary_holding_pen)
 	mov	x0, xzr
 	bl	init_kernel_el			// w0=cpu_boot_mode
@@ -426,6 +427,9 @@ SYM_FUNC_START_LOCAL(__secondary_too_slow)
 	wfi
 	b	__secondary_too_slow
 SYM_FUNC_END(__secondary_too_slow)
+#else // #ifdef CONFIG_SMP
+.text
+#endif
 
 /*
  * Sets the __boot_cpu_mode flag depending on the CPU boot mode passed

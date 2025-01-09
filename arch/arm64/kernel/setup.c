@@ -17,6 +17,7 @@
 #include <linux/cache.h>
 #include <linux/screen_info.h>
 #include <linux/init.h>
+#include <linux/irqchip/arm-gic-v3.h>
 #include <linux/kexec.h>
 #include <linux/root_dev.h>
 #include <linux/cpu.h>
@@ -42,6 +43,7 @@
 #include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
 #include <asm/kasan.h>
+#include <asm/kvm_mmu.h>
 #include <asm/numa.h>
 #include <asm/rsi.h>
 #include <asm/scs.h>
@@ -436,3 +438,64 @@ static int __init check_mmu_enabled_at_boot(void)
 	return 0;
 }
 device_initcall_sync(check_mmu_enabled_at_boot);
+
+void __init init_gic_priority_masking(void);
+void __init init_gic_priority_masking(void)
+{
+	u32 cpuflags;
+
+	if (WARN_ON(!gic_enable_sre()))
+		return;
+
+	cpuflags = read_sysreg(daif);
+
+	WARN_ON(!(cpuflags & PSR_I_BIT));
+	WARN_ON(!(cpuflags & PSR_F_BIT));
+
+	gic_write_pmr(GIC_PRIO_IRQON | GIC_PRIO_PSR_I_SET);
+}
+
+static void __init __maybe_unused hyp_mode_check(void)
+{
+	if (is_hyp_mode_available())
+		pr_info("CPU: All CPU(s) started at EL2\n");
+	else if (is_hyp_mode_mismatched())
+		WARN_TAINT(1, TAINT_CPU_OUT_OF_SPEC,
+			   "CPU: CPUs started in inconsistent modes");
+	else
+		pr_info("CPU: All CPU(s) started at EL1\n");
+	if (IS_ENABLED(CONFIG_KVM) && !is_kernel_in_hyp_mode()) {
+		kvm_compute_layout();
+		kvm_apply_hyp_relocations();
+	}
+}
+
+void __init smp_prepare_boot_cpu(void)
+{
+	/*
+	 * The runtime per-cpu areas have been allocated by
+	 * setup_per_cpu_areas(), and CPU0's boot time per-cpu area will be
+	 * freed shortly, so we must move over to the runtime per-cpu area.
+	 */
+#ifdef CONFIG_SMP
+	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
+#endif
+	cpuinfo_store_boot_cpu();
+	setup_boot_cpu_features();
+
+#ifndef CONFIG_SMP
+	// Recreate smp_cpus_done():
+	hyp_mode_check();
+	setup_system_features();
+	setup_user_features();
+	//mark_linear_text_alias_ro(); // TODO: this one is causing problems
+#endif
+
+	/* Conditionally switch to GIC PMR for interrupt masking */
+	if (system_uses_irq_prio_masking())
+		init_gic_priority_masking();
+
+	kasan_init_hw_tags();
+	/* Init percpu seeds for random tags after cpus are set up. */
+	kasan_init_sw_tags();
+}

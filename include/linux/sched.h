@@ -1823,6 +1823,8 @@ extern int dl_task_check_affinity(struct task_struct *p, const struct cpumask *m
 extern void force_compatible_cpus_allowed_ptr(struct task_struct *p);
 extern void relax_compatible_cpus_allowed_ptr(struct task_struct *p);
 #else
+static inline void force_compatible_cpus_allowed_ptr(struct task_struct *p) {}
+static inline void relax_compatible_cpus_allowed_ptr(struct task_struct *p) {}
 static inline void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 {
 }

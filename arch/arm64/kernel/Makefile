@@ -29,12 +29,13 @@ KCOV_INSTRUMENT_idle.o := n
 obj-y			:= debug-monitors.o entry.o irq.o fpsimd.o		\
 			   entry-common.o entry-fpsimd.o process.o ptrace.o	\
 			   setup.o signal.o sys.o stacktrace.o time.o traps.o	\
-			   io.o vdso.o hyp-stub.o psci.o cpu_ops.o		\
+			   io.o vdso.o hyp-stub.o 				\
 			   return_address.o cpuinfo.o cpu_errata.o		\
 			   cpufeature.o alternative.o cacheinfo.o		\
-			   smp.o smp_spin_table.o topology.o smccc-call.o	\
+			   topology.o smccc-call.o				\
 			   syscall.o proton-pack.o idle.o patching.o pi/	\
 			   rsi.o
+obj-$(CONFIG_SMP)			+= smp.o psci.o smp_spin_table.o cpu_ops.o
 
 obj-$(CONFIG_COMPAT)			+= sys32.o signal32.o			\
 					   sys_compat.o
