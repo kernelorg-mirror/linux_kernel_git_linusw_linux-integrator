@@ -273,9 +273,10 @@ void tpm_common_release(struct file *file, struct file_priv *priv)
 	priv->response_length = 0;
 }
 
-int __init tpm_dev_common_init(void)
+int tpm_dev_common_init_wq(void)
 {
-	tpm_dev_wq = alloc_workqueue("tpm_dev_wq", WQ_MEM_RECLAIM, 0);
+	if (!tpm_dev_wq)
+		tpm_dev_wq = alloc_workqueue("tpm_dev_wq", WQ_MEM_RECLAIM, 0);
 
 	return !tpm_dev_wq ? -ENOMEM : 0;
 }

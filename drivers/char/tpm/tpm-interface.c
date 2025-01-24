@@ -484,16 +484,8 @@ static int __init tpm_init(void)
 		goto out_destroy_tpmrm_class;
 	}
 
-	rc = tpm_dev_common_init();
-	if (rc) {
-		pr_err("tpm: failed to allocate char dev region\n");
-		goto out_unreg_chrdev;
-	}
-
 	return 0;
 
-out_unreg_chrdev:
-	unregister_chrdev_region(tpm_devt, 2 * TPM_NUM_DEVICES);
 out_destroy_tpmrm_class:
 	class_unregister(&tpmrm_class);
 out_destroy_tpm_class:

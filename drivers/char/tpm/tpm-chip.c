@@ -619,6 +619,14 @@ int tpm_chip_register(struct tpm_chip *chip)
 {
 	int rc;
 
+	/*
+	 * Make sure the TPM workqueue starts when we register the first
+	 * TPM chip.
+	 */
+	rc = tpm_dev_common_init_wq();
+	if (rc)
+		return rc;
+
 	rc = tpm_chip_bootstrap(chip);
 	if (rc)
 		return rc;

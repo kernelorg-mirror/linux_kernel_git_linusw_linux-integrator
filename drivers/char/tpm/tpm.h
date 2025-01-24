@@ -319,7 +319,7 @@ int tpm2_load_context(struct tpm_chip *chip, u8 *buf,
 
 void tpm_bios_log_setup(struct tpm_chip *chip);
 void tpm_bios_log_teardown(struct tpm_chip *chip);
-int tpm_dev_common_init(void);
+int tpm_dev_common_init_wq(void);
 void tpm_dev_common_exit(void);
 
 #ifdef CONFIG_TCG_TPM2_HMAC
