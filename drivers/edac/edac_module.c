@@ -124,17 +124,7 @@ static int __init edac_init(void)
 
 	edac_debugfs_init();
 
-	err = edac_workqueue_setup();
-	if (err) {
-		edac_printk(KERN_ERR, EDAC_MC, "Failure initializing workqueue\n");
-		goto err_wq;
-	}
-
 	return 0;
-
-err_wq:
-	edac_debugfs_exit();
-	edac_mc_sysfs_exit();
 
 err_sysfs:
 	edac_subsys_exit();

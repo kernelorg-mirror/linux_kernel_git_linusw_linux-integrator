@@ -5,6 +5,14 @@ static struct workqueue_struct *wq;
 
 bool edac_queue_work(struct delayed_work *work, unsigned long delay)
 {
+	if (!wq) {
+		wq = alloc_ordered_workqueue("edac-poller", WQ_MEM_RECLAIM);
+		if (!wq) {
+			edac_printk(KERN_ERR, EDAC_MC,
+				    "Failure initializing workqueue\n");
+			return false;
+		}
+	}
 	return queue_delayed_work(wq, work, delay);
 }
 EXPORT_SYMBOL_GPL(edac_queue_work);
@@ -25,15 +33,6 @@ bool edac_stop_work(struct delayed_work *work)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(edac_stop_work);
-
-int edac_workqueue_setup(void)
-{
-	wq = alloc_ordered_workqueue("edac-poller", WQ_MEM_RECLAIM);
-	if (!wq)
-		return -ENODEV;
-	else
-		return 0;
-}
 
 void edac_workqueue_teardown(void)
 {
