@@ -3188,18 +3188,19 @@ EXPORT_SYMBOL_GPL(ata_pci_bmdma_init_one);
  *	LOCKING:
  *	None.
  */
-void ata_sff_port_init(struct ata_port *ap)
+int ata_sff_port_init(struct ata_port *ap)
 {
+	/* First make sure we have the SFF-specific workqueue */
+	if (!ata_sff_wq) {
+		ata_sff_wq = alloc_workqueue("ata_sff", WQ_MEM_RECLAIM,
+					     WQ_MAX_ACTIVE);
+		if (!ata_sff_wq)
+			return -ENOMEM;
+	}
+
 	INIT_DELAYED_WORK(&ap->sff_pio_task, ata_sff_pio_task);
 	ap->ctl = ATA_DEVCTL_OBS;
 	ap->last_ctl = 0xFF;
-}
-
-int __init ata_sff_init(void)
-{
-	ata_sff_wq = alloc_workqueue("ata_sff", WQ_MEM_RECLAIM, WQ_MAX_ACTIVE);
-	if (!ata_sff_wq)
-		return -ENOMEM;
 
 	return 0;
 }

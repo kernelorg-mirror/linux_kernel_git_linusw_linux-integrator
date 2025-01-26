@@ -221,15 +221,12 @@ static inline int sata_pmp_attach(struct ata_device *dev)
 /* libata-sff.c */
 #ifdef CONFIG_ATA_SFF
 extern void ata_sff_flush_pio_task(struct ata_port *ap);
-extern void ata_sff_port_init(struct ata_port *ap);
-extern int ata_sff_init(void);
+extern int ata_sff_port_init(struct ata_port *ap);
 extern void ata_sff_exit(void);
 #else /* CONFIG_ATA_SFF */
 static inline void ata_sff_flush_pio_task(struct ata_port *ap)
 { }
-static inline void ata_sff_port_init(struct ata_port *ap)
-{ }
-static inline int ata_sff_init(void)
+static inline int ata_sff_port_init(struct ata_port *ap)
 { return 0; }
 static inline void ata_sff_exit(void)
 { }

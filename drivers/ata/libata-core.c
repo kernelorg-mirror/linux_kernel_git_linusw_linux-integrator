@@ -5417,6 +5417,7 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
 {
 	struct ata_port *ap;
 	int id;
+	int rc;
 
 	ap = kzalloc(sizeof(*ap), GFP_KERNEL);
 	if (!ap)
@@ -5450,7 +5451,11 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
 	ap->stats.unhandled_irq = 1;
 	ap->stats.idle_irq = 1;
 #endif
-	ata_sff_port_init(ap);
+	rc = ata_sff_port_init(ap);
+	if (rc) {
+		kfree(ap);
+		return NULL;
+	}
 
 	return ap;
 }
@@ -6489,13 +6494,6 @@ static int __init ata_init(void)
 	int rc;
 
 	ata_parse_force_param();
-
-	rc = ata_sff_init();
-	if (rc) {
-		ata_free_force_param();
-		return rc;
-	}
-
 	libata_transport_init();
 	ata_scsi_transport_template = ata_attach_transport();
 	if (!ata_scsi_transport_template) {
