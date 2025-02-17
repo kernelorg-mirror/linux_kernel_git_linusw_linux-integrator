@@ -265,7 +265,8 @@ static int ixp4xx_gpio_probe(struct platform_device *pdev)
 			val &= ~IXP4XX_GPCLK_CLK1_MASK;
 			if (clk_14) {
 				/* IXP4XX_GPCLK_CLK0DC implicit low */
-				val |= (1 << IXP4XX_GPCLK_CLK0TC_SHIFT);
+				// val |= (1 << IXP4XX_GPCLK_CLK0TC_SHIFT);
+				val |= 0xFF;
 				val |= IXP4XX_GPCLK_MUX14;
 			}
 
