@@ -152,6 +152,15 @@ int rtl8366rb_setup_leds(struct realtek_priv *priv)
 	struct dsa_port *dp;
 	int ret = 0;
 
+	/* Set blinking, used by all LED groups using HW triggers.
+	 * TODO: make this configurable, implement proper HW triggers.
+	 */
+	ret = regmap_update_bits(priv->map, RTL8366RB_LED_BLINKRATE_REG,
+				 RTL8366RB_LED_BLINKRATE_MASK,
+				 RTL8366RB_LED_BLINKRATE_56MS);
+	if (ret)
+		return ret;
+
 	dsa_switch_for_each_port(dp, ds) {
 		if (!dp->dn)
 			continue;

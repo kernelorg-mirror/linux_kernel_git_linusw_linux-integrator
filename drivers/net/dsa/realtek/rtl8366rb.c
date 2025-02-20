@@ -1085,15 +1085,6 @@ static int rtl8366rb_setup(struct dsa_switch *ds)
 	if (ret)
 		return ret;
 
-	/* Set blinking, used by all LED groups using HW triggers.
-	 * TODO: make this configurable
-	 */
-	ret = regmap_update_bits(priv->map, RTL8366RB_LED_BLINKRATE_REG,
-				 RTL8366RB_LED_BLINKRATE_MASK,
-				 RTL8366RB_LED_BLINKRATE_56MS);
-	if (ret)
-		return ret;
-
 	/* Set up LED activity:
 	 * Each port has 4 LEDs on fixed groups. Each group shares the same
 	 * hardware trigger across all ports. LEDs can only be indiviually
