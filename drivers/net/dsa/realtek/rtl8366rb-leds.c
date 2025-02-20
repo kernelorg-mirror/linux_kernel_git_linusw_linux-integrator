@@ -135,13 +135,14 @@ static int rtl8366rb_setup_led(struct realtek_priv *priv, struct dsa_port *dp,
 	init_data.devicename = name;
 
 	ret = devm_led_classdev_register_ext(priv->dev, &led->cdev, &init_data);
-	if (ret) {
+	if (ret)
 		dev_warn(priv->dev, "Failed to init LED %d for port %d",
 			 led_group, dp->index);
-		return ret;
-	}
 
-	return 0;
+	/* This is only used as template */
+	kfree(init_data.devicename);
+
+	return ret;
 }
 
 int rtl8366rb_setup_leds(struct realtek_priv *priv)
