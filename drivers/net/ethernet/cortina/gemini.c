@@ -596,8 +596,8 @@ static int gmac_setup_txqs(struct net_device *netdev)
 	return 0;
 }
 
-static void gmac_clean_txq(struct net_device *netdev, struct gmac_txq *txq,
-			   unsigned int r)
+static void gmac_clean_txq(struct net_device *netdev, struct netdev_queue *ntxq,
+			   struct gmac_txq *txq, unsigned int r)
 {
 	struct gemini_ethernet_port *port = netdev_priv(netdev);
 	unsigned int m = (1 << port->txq_order) - 1;
@@ -664,6 +664,7 @@ static void gmac_clean_txq(struct net_device *netdev, struct gmac_txq *txq,
 	port->stats.tx_bytes += bytes;
 	port->tx_hw_csummed += hwchksum;
 	u64_stats_update_end(&port->ir_stats_syncp);
+	netdev_tx_completed_queue(ntxq, pkts, bytes);
 
 	txq->cptr = c;
 }
@@ -673,6 +674,7 @@ static void gmac_cleanup_txqs(struct net_device *netdev)
 	struct gemini_ethernet_port *port = netdev_priv(netdev);
 	unsigned int n_txq = netdev->num_tx_queues;
 	struct gemini_ethernet *geth = port->geth;
+	struct netdev_queue *ntxq;
 	void __iomem *rwptr_reg;
 	unsigned int r, i;
 
@@ -684,7 +686,8 @@ static void gmac_cleanup_txqs(struct net_device *netdev)
 		writew(r, rwptr_reg);
 		rwptr_reg += 2;
 
-		gmac_clean_txq(netdev, port->txq + i, r);
+		ntxq = netdev_get_tx_queue(netdev, i);
+		gmac_clean_txq(netdev, ntxq, port->txq + i, r);
 	}
 	writel(0, port->dma_base + GMAC_SW_TX_QUEUE_BASE_REG);
 
@@ -1298,7 +1301,7 @@ static netdev_tx_t gmac_start_xmit(struct sk_buff *skb,
 	d &= m;
 
 	if (d < nfrags + 2) {
-		gmac_clean_txq(netdev, txq, r);
+		gmac_clean_txq(netdev, ntxq, txq, r);
 		d = txq->cptr - w - 1;
 		d &= m;
 
@@ -1330,8 +1333,9 @@ static netdev_tx_t gmac_start_xmit(struct sk_buff *skb,
 	}
 
 	writew(w, ptr_reg + 2);
+	netdev_tx_sent_queue(ntxq, skb->len);
 
-	gmac_clean_txq(netdev, txq, r);
+	gmac_clean_txq(netdev, ntxq, txq, r);
 	return NETDEV_TX_OK;
 
 out_drop_free:
