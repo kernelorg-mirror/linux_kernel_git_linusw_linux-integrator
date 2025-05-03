@@ -223,7 +223,38 @@ static bool try_release_thread_stack_to_cache(struct vm_struct *vm_area)
 
 #ifdef CONFIG_DYNAMIC_STACK
 
+/* 16 global pages to use when a CPU runs out of local lockless pages */
+#define GLOBAL_DYNSTACK_PAGES 8
+static struct page *global_dynstack_pages[GLOBAL_DYNSTACK_PAGES];
+static DEFINE_RAW_SPINLOCK(global_dynstack_lock);
+static struct irq_work global_dynstack_refill;
+
 static DEFINE_PER_CPU(struct page *, dynamic_stack_pages[THREAD_DYNAMIC_PAGES]);
+
+static void dynamic_stack_account_and_alloc_new(struct page **pages, int no_pages);
+
+static void global_dynstack_refill_work(struct irq_work *irq_work)
+{
+	guard(raw_spinlock)(&global_dynstack_lock);
+	dynamic_stack_account_and_alloc_new(global_dynstack_pages, GLOBAL_DYNSTACK_PAGES);
+}
+
+static void dynamic_stack_setup_global_stack(void)
+{
+	struct page *page;
+	int i;
+
+	for (i = 0; i < GLOBAL_DYNSTACK_PAGES; i++) {
+		page = alloc_pages(GFP_VMAP_STACK, 0);
+		if (!page) {
+			pr_err("failed to allocate global stack page\n");
+			break;
+		}
+		global_dynstack_pages[i] = page;
+	}
+	pr_info("Allocated %d global dynstack pages\n", GLOBAL_DYNSTACK_PAGES);
+	init_irq_work(&global_dynstack_refill, global_dynstack_refill_work);
+}
 
 static struct vm_struct *alloc_vmap_stack(int node)
 {
@@ -286,18 +317,42 @@ static void free_vmap_stack(struct vm_struct *vm_area)
  */
 #define DYNAMIC_STACK_PAGE_AQUIRED_FLAG	0x1
 
-static struct page * noinstr dynamic_stack_get_page(void)
+static struct page * noinstr dynamic_page_pick(struct page **pages, int no_pages)
 {
-	struct page **pages = this_cpu_ptr(dynamic_stack_pages);
+	struct page *page;
 	int i;
 
-	for (i = 0; i < THREAD_DYNAMIC_PAGES; i++) {
-		struct page *page = pages[i];
+	for (i = 0; i < no_pages; i++) {
+		page = pages[i];
 
 		if (page && !((uintptr_t)page & DYNAMIC_STACK_PAGE_AQUIRED_FLAG)) {
 			pages[i] = (void *)((uintptr_t)pages[i] | DYNAMIC_STACK_PAGE_AQUIRED_FLAG);
 			return page;
 		}
+	}
+
+	return NULL;
+}
+
+static struct page * noinstr dynamic_stack_get_page(void)
+{
+	struct page **pages;
+	struct page *page;
+
+	/* Ideally I want to try page = try_alloc_pages(cpu_to_node(get_cpu()), 0); here */
+
+	/* First try per-CPU page stash, this is lockless */
+	pages = this_cpu_ptr(dynamic_stack_pages);
+	page = dynamic_page_pick(pages, THREAD_DYNAMIC_PAGES);
+	if (page)
+		return page;
+
+	/* We ran out of per-CPU pages, go to the locked global pool */
+	guard(raw_spinlock)(&global_dynstack_lock);
+	page = dynamic_page_pick(global_dynstack_pages, GLOBAL_DYNSTACK_PAGES);
+	if (page) {
+		irq_work_queue(&global_dynstack_refill);
+		return page;
 	}
 
 	return NULL;
@@ -336,12 +391,12 @@ static int dynamic_stack_free_pages_cpu(unsigned int cpu)
 	return 0;
 }
 
-void dynamic_stack_refill_pages(void)
+static void dynamic_stack_account_and_alloc_new(struct page **pages, int no_pages)
 {
-	struct page **pages = this_cpu_ptr(dynamic_stack_pages);
-	int i, ret;
+	int ret;
+	int i;
 
-	for (i = 0; i < THREAD_DYNAMIC_PAGES; i++) {
+	for (i = 0; i < no_pages; i++) {
 		struct page *page = pages[i];
 
 		if (!((uintptr_t)page & DYNAMIC_STACK_PAGE_AQUIRED_FLAG))
@@ -368,6 +423,15 @@ void dynamic_stack_refill_pages(void)
 			pr_err_ratelimited("failed to refill per-cpu dynamic stack\n");
 		pages[i] = page;
 	}
+	if (i > 0)
+		pr_info("Allocated %d new pages and accounted\n", i);
+}
+
+void dynamic_stack_refill_pages(void)
+{
+	struct page **pages = this_cpu_ptr(dynamic_stack_pages);
+
+	dynamic_stack_account_and_alloc_new(pages, THREAD_DYNAMIC_PAGES);
 }
 
 bool noinstr dynamic_stack_fault(struct task_struct *tsk, unsigned long address)
@@ -1098,6 +1162,7 @@ void __init fork_init(void)
 	 * as CPUs are onlined.
 	 */
 	dynamic_stack_refill_pages_cpu(smp_processor_id());
+	dynamic_stack_setup_global_stack();
 #endif
 	scs_init();
 
