@@ -32,6 +32,9 @@ DEFINE_PER_CPU(struct nmi_ctx, nmi_contexts);
 
 DEFINE_PER_CPU(unsigned long *, irq_stack_ptr);
 
+#ifdef CONFIG_DYNAMIC_STACK
+DEFINE_PER_CPU(unsigned long *, sync_stack_ptr);
+#endif
 
 DECLARE_PER_CPU(unsigned long *, irq_shadow_call_stack_ptr);
 
@@ -60,6 +63,10 @@ static void __init init_irq_stacks(void)
 	for_each_possible_cpu(cpu) {
 		p = arch_alloc_vmap_stack(IRQ_STACK_SIZE, early_cpu_to_node(cpu));
 		per_cpu(irq_stack_ptr, cpu) = p;
+#ifdef CONFIG_DYNAMIC_STACK
+		p = arch_alloc_vmap_stack(SYNC_STACK_SIZE, early_cpu_to_node(cpu));
+		per_cpu(sync_stack_ptr, cpu) = p;
+#endif
 	}
 }
 #else
