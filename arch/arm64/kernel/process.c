@@ -537,6 +537,16 @@ static void tls_thread_switch(struct task_struct *next)
 		write_sysreg_s(next->thread.tpidr2_el0, SYS_TPIDR2_EL0);
 }
 
+void tls_thread_restore_current(void)
+{
+	if (is_compat_thread(task_thread_info(current)))
+		write_sysreg(current->thread.uw.tp_value, tpidrro_el0);
+	else
+		write_sysreg(0, tpidrro_el0);
+
+	write_sysreg(*task_user_tls(current), tpidr_el0);
+}
+
 /*
  * Force SSBS state on context-switch, since it may be lost after migrating
  * from a CPU which treats the bit as RES0 in a heterogeneous system.
