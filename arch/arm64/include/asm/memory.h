@@ -143,6 +143,13 @@
 
 #define IRQ_STACK_SIZE		THREAD_SIZE
 
+/*
+ * This size is determined by trial-and-error. The sync aborts do not
+ * nest very deep, they put a new page into the stack and return, no calls
+ * to deep memory management code etc is done from this context.
+ */
+#define SYNC_STACK_SIZE		SZ_8K
+
 #define OVERFLOW_STACK_SIZE	SZ_4K
 
 #define NVHE_STACK_SHIFT       PAGE_SHIFT
