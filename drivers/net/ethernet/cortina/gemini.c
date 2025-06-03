@@ -2438,7 +2438,7 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 	else
 		return -ENODEV;
 
-	dev_info(dev, "probe %s ID %d\n", dev_name(dev), id);
+	dev_dbg(dev, "probe %s ID %d\n", dev_name(dev), id);
 
 	netdev = devm_alloc_etherdev_mqs(dev, sizeof(*port), TX_QUEUE_NUM, TX_QUEUE_NUM);
 	if (!netdev) {
@@ -2541,7 +2541,7 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 		dev_dbg(dev, "ethernet address 0x%08x%08x%08x invalid\n",
 			port->mac_addr[0], port->mac_addr[1],
 			port->mac_addr[2]);
-		dev_info(dev, "using a random ethernet address\n");
+		dev_dbg(dev, "using a random ethernet address\n");
 		eth_hw_addr_random(netdev);
 	}
 	gmac_write_mac_address(netdev);
