@@ -365,7 +365,8 @@ static int gmac_setup_phy(struct net_device *netdev)
 				     dev->of_node,
 				     gmac_adjust_link);
 	if (!phy)
-		return -ENODEV;
+		return dev_err_probe(dev, -EPROBE_DEFER, "waiting for PHY");
+
 	netdev->phydev = phy;
 
 	phy_set_max_speed(phy, SPEED_1000);
@@ -2557,8 +2558,9 @@ static int gemini_ethernet_port_probe(struct platform_device *pdev)
 
 	ret = gmac_setup_phy(netdev);
 	if (ret) {
-		netdev_err(netdev,
-			   "PHY init failed\n");
+		if (ret != -EPROBE_DEFER)
+			netdev_err(netdev,
+				   "PHY init failed\n");
 		goto unprepare;
 	}
 
