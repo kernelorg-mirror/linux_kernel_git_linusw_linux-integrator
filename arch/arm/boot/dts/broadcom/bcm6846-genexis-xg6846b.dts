@@ -54,6 +54,11 @@
 			gpios = <&gpio0 41 GPIO_ACTIVE_LOW>;
 		};
 	};
+
+	sfp0: sfp0 {
+		compatible = "sff,sfp";
+		i2c-bus = <&i2c0>;
+	};
 };
 
 &gpio0 {
@@ -226,19 +231,107 @@
 &mdio {
 	status = "okay";
 
+	switch0: switch@0 {
+		/* Actually MV88E6320 revision 2 */
+		compatible = "marvell,mv88e6085";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0>;
+
+		interrupt-controller;
+		#interrupt-cells = <2>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				phy-mode = "sgmii";
+				// ethernet = <?> the SGMII of BCM68460
+				// also known as "serdes"
+
+				fixed-link {
+					// TODO: can this do 2500?
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				label = "wan";
+
+				phy-mode = "rgmii-id";
+				sfp = <&sfp0>;
+
+				fixed-link {
+					// TODO: can this do 2500?
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@4 {
+				reg = <4>;
+				label = "wan/ext1";
+				phy-mode = "rgmii";
+				// I think the PHY adds the delay
+				phy-handle = <&phy21>;
+			};
+
+			port@6 {
+				reg = <6>;
+
+				phy-mode = "rgmii-id";
+				// ethernet = <?> the RGMII of BCM68460
+				// From port n on the "brcm,enet"
+				// UNIMAC driver
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+		};
+	};
+
+	/* These PHYs have ID 0xae0251e1 called "bca_phy" in the source */
 	phy1: ethernet-phy@1 {
+		// Port 0 on the enet/UNIMAC
 		reg = <1>;
 	};
 	phy2: ethernet-phy@2 {
+		// Port 1 on the enet/UNIMAC
 		reg = <2>;
 	};
 	phy3: ethernet-phy@3 {
+		// Port 2 on the enet/UNIMAC
 		reg = <3>;
 	};
 	phy4: ethernet-phy@4 {
+		// Port 3 on the enet/UNIMAC
 		reg = <4>;
 	};
+
+	/* This external PHY used for wan/ext1 has ID 0xff001152 */
 	phy21: ethernet-phy@21 {
+		// Port 4 on the MV88E6320
 		reg = <21>;
+		// Vendor device tree says RX and TX are delayed in the PHY
+		// but not by how much.
+		rx-internal-delay-ps = <2000>;
+		tx-internal-delay-ps = <2000>;
+	};
+};
+
+&i2c0 {
+	status = "okay";
+
+	sfp_eeprom: eeprom@50 {
+		compatible = "atmel,24c02";
+		reg = <0x50>;
+		read-only;
 	};
 };
