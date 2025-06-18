@@ -499,6 +499,20 @@ config I2C_BCM_KONA
 
 	  If you do not need KONA I2C interface, say N.
 
+config I2C_BCMBCA
+	tristate "Broadcom BCMBCA I2C controller"
+	depends on ARCH_BCMBCA || COMPILE_TEST
+	depends on COMMON_CLK
+	help
+	  If you say yes to this option, support will be included for the
+	  I2C controller found in the The Broadcom Broadband Access
+	  (BCA) SoC:s.
+
+	  If you don't know what to do here, say N.
+
+	  This support is also available as a module.  If so, the module
+	  will be called i2c-bcmbca.
+
 config I2C_BRCMSTB
 	tristate "BRCM Settop/DSL I2C controller"
 	depends on ARCH_BCM2835 || ARCH_BCMBCA || ARCH_BRCMSTB || \
