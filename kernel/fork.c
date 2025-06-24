@@ -255,12 +255,12 @@ static void dynamic_stack_setup_global_stack(void)
 	init_irq_work(&global_dynstack_refill, global_dynstack_refill_work);
 }
 
-static struct vm_struct *alloc_vmap_stack(int node)
+static struct vm_struct *alloc_vmap_stack(struct task_struct *tsk, int node)
 {
 	gfp_t gfp = GFP_VMAP_STACK;
 	unsigned long addr, end;
 	struct vm_struct *vm_area;
-	int err, i;
+	int err, i, pages;
 
 	vm_area = get_vm_area_node(THREAD_SIZE, THREAD_ALIGN, VM_MAP, node,
 				   gfp, __builtin_return_address(0));
@@ -272,7 +272,14 @@ static struct vm_struct *alloc_vmap_stack(int node)
 	if (!vm_area->pages)
 		goto cleanup_err;
 
-	for (i = 0; i < THREAD_PREALLOC_PAGES; i++) {
+	if (tsk->pid == 0)
+		pages = (THREAD_SIZE >> PAGE_SHIFT);
+	else
+		pages = THREAD_PREALLOC_PAGES;
+
+	pr_debug("preallocate %d pages for task forked from PID %d\n", pages, tsk->pid);
+
+	for (i = 0; i < pages; i++) {
 		vm_area->pages[i] = alloc_pages(gfp, 0);
 		if (!vm_area->pages[i])
 			goto cleanup_err;
@@ -280,12 +287,14 @@ static struct vm_struct *alloc_vmap_stack(int node)
 	}
 
 	addr = (unsigned long)vm_area->addr +
-					(THREAD_DYNAMIC_PAGES << PAGE_SHIFT);
+		(((THREAD_SIZE >> PAGE_SHIFT) - pages) << PAGE_SHIFT);
 	end = (unsigned long)vm_area->addr + THREAD_SIZE;
-	err = vmap_pages_range_noflush(addr, end, PAGE_KERNEL, vm_area->pages,
-				       PAGE_SHIFT);
-	if (err)
-		goto cleanup_err;
+	if (addr < end) {
+		err = vmap_pages_range_noflush(addr, end, PAGE_KERNEL, vm_area->pages,
+					       PAGE_SHIFT);
+		if (err)
+			goto cleanup_err;
+	}
 
 	return vm_area;
 cleanup_err:
@@ -422,8 +431,8 @@ static void dynamic_stack_account_and_alloc_new(struct page **pages, int no_page
 			pr_err_ratelimited("failed to refill per-cpu dynamic stack\n");
 		pages[i] = page;
 	}
-	if (i > 0)
-		pr_info("Allocated %d new pages and accounted\n", i);
+	// if (i > 0)
+	//	pr_info("Allocated %d new pages and accounted\n", i);
 }
 
 void dynamic_stack_refill_pages(void)
@@ -512,7 +521,7 @@ bool noinstr dynamic_stack_fault(struct task_struct *tsk, unsigned long address)
 }
 
 #else /* !CONFIG_DYNAMIC_STACK */
-static inline struct vm_struct *alloc_vmap_stack(int node)
+static inline struct vm_struct *alloc_vmap_stack(struct task_struct *tsk, int node)
 {
 	void *stack;
 
@@ -613,7 +622,7 @@ static int alloc_thread_stack_node(struct task_struct *tsk, int node)
 		return 0;
 	}
 
-	vm_area = alloc_vmap_stack(node);
+	vm_area = alloc_vmap_stack(tsk, node);
 	if (!vm_area)
 		return -ENOMEM;
 
