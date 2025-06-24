@@ -572,7 +572,7 @@ asmlinkage int noinstr el1h_64_sync_handler(struct pt_regs *regs)
 		if (fault == EL1_STACK_OVERFLOW)
 			handle_bad_stack(regs);
 		if (fault == EL1_FAULT_ON_STACK) {
-			pr_info("PAGE FAULT ON STACK!!\n");
+			// pr_info("PAGE FAULT ON STACK!!\n");
 			do_stack_abort(far, regs);
 			return 1;
 		} else {
