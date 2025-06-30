@@ -423,8 +423,8 @@ static void dynamic_stack_account_and_alloc_new(struct page **pages, int no_page
 			pr_err_ratelimited("failed to refill per-cpu dynamic stack\n");
 		pages[i] = page;
 	}
-	if (i > 0)
-		pr_info("Allocated %d new pages and accounted\n", i);
+	//if (i > 0)
+		// pr_info("Allocated %d new pages and accounted\n", i);
 }
 
 void dynamic_stack_refill_pages(void)
