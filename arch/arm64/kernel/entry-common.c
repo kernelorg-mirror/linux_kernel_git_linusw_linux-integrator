@@ -523,9 +523,62 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 	exit_to_kernel_mode(regs);
 }
 
-asmlinkage void noinstr el1h_64_sync_handler(struct pt_regs *regs)
+#define EL1_FAULT_ON_STACK 1
+#define EL1_STACK_OVERFLOW 2
+
+static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
+						     unsigned long far)
+{
+	unsigned long stack = (unsigned long)current->stack;
+	unsigned long addr = untagged_addr(far);
+
+	/*
+	 * Is this even a page fault?
+	 * NB: only check for data abort, we have no business
+	 * executing code on the stack so no instruction aborts.
+	 */
+	if (ESR_ELx_EC(esr) !=  ESR_ELx_EC_DABT_CUR)
+		return 0;
+
+	if (addr < stack || addr >= stack + THREAD_SIZE)
+		return 0;
+
+	/* We hit the botton of the stack: overflow! */
+	if (addr == stack)
+		return EL1_STACK_OVERFLOW;
+
+	/* Actually a page fault on the stack! */
+	return EL1_FAULT_ON_STACK;
+}
+
+/* Returns 1 if we are still on the sync stack, else 0 */
+asmlinkage int noinstr el1h_64_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
+
+	if (IS_ENABLED(CONFIG_DYNAMIC_STACK)) {
+		unsigned long far = read_sysreg(far_el1);
+		unsigned int fault;
+
+		/*
+		 * Are we faulting on the thread stack? Else just switch
+		 * back to the thread stack and continue as if nothing happened.
+		 * code running in the abort handlers will allow further
+		 * aborts to happen so we most definitely need to switch
+		 * back to the task stack unless we are handling a page fault
+		 * on the stack itself.
+		 */
+		fault = el1_page_fault_on_stack(esr, far);
+		if (fault == EL1_STACK_OVERFLOW)
+			handle_bad_stack(regs);
+		if (fault == EL1_FAULT_ON_STACK) {
+			pr_info("PAGE FAULT ON STACK!!\n");
+			do_stack_abort(far, regs);
+			return 1;
+		} else {
+			switch_sync_stack_to_task_stack();
+		}
+	}
 
 	switch (ESR_ELx_EC(esr)) {
 	case ESR_ELx_EC_DABT_CUR:
@@ -564,6 +617,8 @@ asmlinkage void noinstr el1h_64_sync_handler(struct pt_regs *regs)
 	default:
 		__panic_unhandled(regs, "64-bit el1h sync", esr);
 	}
+
+	return 0;
 }
 
 static __always_inline void __el1_pnmi(struct pt_regs *regs,
