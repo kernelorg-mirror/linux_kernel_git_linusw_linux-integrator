@@ -153,7 +153,11 @@ static void do_interrupt_handler(struct pt_regs *regs,
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	if (on_thread_stack())
+	/*
+	 * Here we can be on the task stack or we can be on the sync stack
+	 * so check pointedly whether we are on the irq stack or not.
+	 */
+	if (!on_irq_stack(current_stack_pointer, 1))
 		call_on_irq_stack(regs, handler);
 	else
 		handler(regs);
@@ -449,9 +453,54 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 	exit_to_kernel_mode(regs, state);
 }
 
+#define EL1_FAULT_ON_STACK 1
+#define EL1_STACK_OVERFLOW 2
+
+static unsigned int noinstr el1_page_fault_on_stack(unsigned long esr,
+						    unsigned long far)
+{
+	unsigned long stack = (unsigned long)current->stack;
+	unsigned long addr = untagged_addr(far);
+
+	/*
+	 * Is this even a page fault?
+	 * NB: only check for data abort, we have no business
+	 * executing code on the stack so no instruction aborts.
+	 */
+	if (ESR_ELx_EC(esr) !=  ESR_ELx_EC_DABT_CUR)
+		return 0;
+
+	if (addr < stack || addr >= stack + THREAD_SIZE) {
+		// pr_err("Using sync stack but not faulting on the stack!\n");
+		return 0;
+	}
+
+	/* We hit the botton of the stack: overflow! */
+	if (addr >= (stack - PAGE_SIZE) && addr < stack)
+		return EL1_STACK_OVERFLOW;
+
+	return EL1_FAULT_ON_STACK;
+}
+
+
 asmlinkage void noinstr el1h_64_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
+
+	if (IS_ENABLED(CONFIG_DYNAMIC_STACK)) {
+		unsigned long far = read_sysreg(far_el1);
+		unsigned int fault;
+
+		fault = el1_page_fault_on_stack(esr, far);
+		if (fault == EL1_STACK_OVERFLOW) {
+			handle_bad_stack(regs);
+			return;
+		}
+		if (fault == EL1_FAULT_ON_STACK) {
+			do_stack_abort(far, regs);
+			return;
+		}
+	}
 
 	switch (ESR_ELx_EC(esr)) {
 	case ESR_ELx_EC_DABT_CUR:

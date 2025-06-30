@@ -32,6 +32,14 @@ DEFINE_PER_CPU(struct nmi_ctx, nmi_contexts);
 
 DEFINE_PER_CPU(unsigned long *, irq_stack_ptr);
 
+#ifdef CONFIG_DYNAMIC_STACK
+DEFINE_PER_CPU(unsigned long *, sync_stack_ptr);
+/* And a shadow pointer as well! */
+DECLARE_PER_CPU(unsigned long *, sync_shadow_call_stack_ptr);
+#ifdef CONFIG_SHADOW_CALL_STACK
+DEFINE_PER_CPU(unsigned long *, sync_shadow_call_stack_ptr);
+#endif
+#endif
 
 DECLARE_PER_CPU(unsigned long *, irq_shadow_call_stack_ptr);
 
@@ -46,9 +54,14 @@ static void init_irq_scs(void)
 	if (!scs_is_enabled())
 		return;
 
-	for_each_possible_cpu(cpu)
+	for_each_possible_cpu(cpu) {
 		per_cpu(irq_shadow_call_stack_ptr, cpu) =
 			scs_alloc(early_cpu_to_node(cpu));
+#ifdef CONFIG_DYNAMIC_STACK
+		per_cpu(sync_shadow_call_stack_ptr, cpu) =
+			scs_alloc(early_cpu_to_node(cpu));
+#endif
+	}
 }
 
 static void __init init_irq_stacks(void)
@@ -59,6 +72,13 @@ static void __init init_irq_stacks(void)
 	for_each_possible_cpu(cpu) {
 		p = arch_alloc_vmap_stack(IRQ_STACK_SIZE, early_cpu_to_node(cpu));
 		per_cpu(irq_stack_ptr, cpu) = p;
+#ifdef CONFIG_DYNAMIC_STACK
+		/* These do not need to be aligned so don't use arch_alloc_vmap_stack() */
+		p = arch_alloc_vmap_stack(SYNC_STACK_SIZE, early_cpu_to_node(cpu));
+		per_cpu(sync_stack_ptr, cpu) = p;
+		pr_info("ALLOCATED PER-CPU SYNC STACK AT 0x%08llx-0x%08llx\n",
+			(u64)p, ((u64)(p))+SYNC_STACK_SIZE);
+#endif
 	}
 }
 
