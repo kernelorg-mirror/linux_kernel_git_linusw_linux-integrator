@@ -100,6 +100,61 @@
 .org .Lventry_start\@ + 128	// Did we overflow the ventry slot?
 	.endm
 
+#ifdef CONFIG_DYNAMIC_STACK
+	/* Only used for EL1 sync exceptions */
+	.macro kernel_ventry_el1_sync, el:req, ht:req, regsize:req, label:req
+	.align 7
+.Lventry_el1_sync_start\@:
+	/*
+	 * Call the sync handler on the special sync stack since we could
+	 * have just encountered a data abort on the task stack, and in
+	 * that case we cannot store anything on the current task stack.
+	*/
+	// Save x0, x1 in tpidr_el0, tpidrro_el0 so we have two scratch
+	// registers to use.
+	msr	tpidr_el0, x0
+	msr	tpidrro_el0, x1
+	// Check if we are handling a sync on the kernel stack
+	mrs	x0, esr_el1 // Check exception status, is this DABT?
+	lsr	x0, x0, #26
+	and	x0, x0, #0x3f
+	cmp	x0, #ESR_ELx_EC_DABT_CUR
+	b.ne	.Lventry_e1_sync_no_stack_sync\@ // Not a DABT so no sync on stack
+	mrs	x0, far_el1 // Check where the exception happened
+	// Top byte ignore
+	sbfx	x0, x0, #0, #56
+	// get kernel task stack for current task, we can't inspect SP because
+	// that could be the IRQ stack which does not page dynamically.
+	// TODO: detect stack overflow here if FAR is between
+	//       (task_stack - 1 page) -> task_stack?
+	get_current_task x1
+	ldr	x1, [x1, #TSK_STACK]
+	cmp	x0, x1
+	b.lo	.Lventry_e1_sync_no_stack_sync\@ // Not on the task stack
+	add	x1, x1, #THREAD_SIZE
+	cmp	x0, x1
+	b.hs	.Lventry_e1_sync_no_stack_sync\@ // Not on the task stack
+	// Proceeed on the sync stack, we got a DABT on the stack indeed
+	ldr_this_cpu x0, sync_stack_ptr, x1
+	mov	x1, sp		// Save old SP in x1
+	add	sp, x0, #SYNC_STACK_SIZE
+	sub	sp, sp, #PT_REGS_SIZE
+	str	x1, [sp, S_STACK_DABT_SP]
+	mrs	x0, tpidr_el0
+	mrs	x1, tpidrro_el0
+	b	el\el\ht\()_\regsize\()_sync_stack_dabt
+.Lventry_e1_sync_no_stack_sync\@:
+	sub	sp, sp, #PT_REGS_SIZE
+	mrs	x0, tpidr_el0
+	mrs	x1, tpidrro_el0
+	b	el\el\ht\()_\regsize\()_\label
+.org .Lventry_el1_sync_start\@ + 128	// Did we overflow the ventry slot?
+	.endm
+#else
+	/* Just an alias to the kernel_ventry macro */
+#define kernel_ventry_el1_sync kernel_ventry
+#endif /* CONFIG_DYNAMIC_STACK */
+
 	/* Only used for EL1 irq/fiq exceptions */
 	.macro kernel_ventry_el1_irq, ht:req, label:req
 	.align 7
@@ -225,7 +280,7 @@ alternative_cb_end
 #endif
 	.endm
 
-	.macro	kernel_entry, el, regsize = 64, el1_irq = 0
+	.macro	kernel_entry, el, regsize = 64, el1_irq = 0, el1_sync_stack_dabt = 0
 	.if	\el == 0
 	alternative_insn nop, SET_PSTATE_DIT(1), ARM64_HAS_DIT
 	.endif
@@ -320,8 +375,16 @@ alternative_else_nop_endif
 	.if \el1_irq == 1
 	ldr	x21, [sp, #S_IRQ_EL1_SP] // Task stack SP
 	.else
+#ifdef CONFIG_DYNAMIC_STACK
+	.if \el1_sync_stack_dabt == 1
+	ldr	x21, [sp, #S_STACK_DABT_SP]
+	.else /* !el1_irq, !el1_sync_stack_dabt */
 	add	x21, sp, #PT_REGS_SIZE
-	.endif
+	.endif /* el1_sync_stack_dabt */
+#else
+	add	x21, sp, #PT_REGS_SIZE
+#endif
+	.endif /* el1_irq */
 	get_current_task tsk
 	.endif /* \el == 0 */
 	mrs	x22, elr_el1
@@ -393,7 +456,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, sync_stack_dabt=0
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -482,6 +545,9 @@ alternative_else_nop_endif
 	msr	tpidrro_el0, x0
 	.endif
 	ldp	x0, x1, [sp, #16 * 0]
+	.if	\sync_stack_dabt == 1
+	msr	tpidr_el0, x0 // Put a copy of x0 here
+	.endif
 	ldp	x2, x3, [sp, #16 * 1]
 	ldp	x4, x5, [sp, #16 * 2]
 	ldp	x6, x7, [sp, #16 * 3]
@@ -515,7 +581,18 @@ alternative_else_nop_endif
 	.endif
 
 	ldr	lr, [sp, #S_LR]
+#ifdef CONFIG_DYNAMIC_STACK
+	.if	\sync_stack_dabt == 1
+	// Restore original SP (was using sync stack) before in-kernel sync
+	ldr	x0, [sp, #S_STACK_DABT_SP]
+	mov	sp, x0
+	mrs	x0, tpidr_el0 // We have a copy of x0 here
+	.else
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
+	.endif
+#else
+	add	sp, sp, #PT_REGS_SIZE		// restore sp
+#endif
 
 	.if \el == 0
 	/* This must be after the last explicit memory access */
@@ -587,12 +664,12 @@ tsk	.req	x28		// current thread_info
 
 	.align	11
 SYM_CODE_START(vectors)
-	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
+	kernel_ventry_el1_sync	1, t, 64, sync	// Synchronous EL1t
 	kernel_ventry_el1_irq	t, irq		// IRQ EL1t
 	kernel_ventry_el1_irq	t, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
-	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
+	kernel_ventry_el1_sync	1, h, 64, sync	// Synchronous EL1h
 	kernel_ventry_el1_irq	h, irq		// IRQ EL1h
 	kernel_ventry_el1_irq	h, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
@@ -637,45 +714,72 @@ SYM_CODE_START_LOCAL(__bad_stack)
 SYM_CODE_END(__bad_stack)
 
 
-	.macro entry_handler el:req, ht:req, regsize:req, el1_irq:req, label:req
+	.macro entry_handler el:req, ht:req, regsize:req, el1_irq:req, el1_sync_stack_dabt:req, label:req
 SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
-	kernel_entry \el, \regsize, \el1_irq
+	kernel_entry \el, \regsize, \el1_irq, \el1_sync_stack_dabt
 	mov	x0, sp
 	bl	el\el\ht\()_\regsize\()_\label\()_handler
 	.if \el == 0
 	b	ret_to_user
+	.endif
+#ifdef CONFIG_DYNAMIC_STACK
+	.if \el1_sync_stack_dabt == 1
+	b	ret_to_kernel_el1_sync_stack_dabt
 	.else
+	.if \el != 0
 	b	ret_to_kernel
 	.endif
+	.endif
+#else
+	.if \el != 0
+	b	ret_to_kernel
+	.endif
+#endif
 SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
 	.endm
 
 /*
  * Early exception handlers
- */
-	entry_handler	1, t, 64, 0, sync
-	entry_handler	1, t, 64, 1, irq
-	entry_handler	1, t, 64, 1, fiq
-	entry_handler	1, t, 64, 0, error
+*/
+#ifdef CONFIG_DYNAMIC_STACK
+	entry_handler	1, t, 64, 0, 1, sync_stack_dabt
+#endif
+	entry_handler	1, t, 64, 0, 0, sync
+	entry_handler	1, t, 64, 1, 0, irq
+	entry_handler	1, t, 64, 1, 0, fiq
+	entry_handler	1, t, 64, 0, 0, error
 
-	entry_handler	1, h, 64, 0, sync
-	entry_handler	1, h, 64, 1, irq
-	entry_handler	1, h, 64, 1, fiq
-	entry_handler	1, h, 64, 0, error
+#ifdef CONFIG_DYNAMIC_STACK
+	entry_handler	1, h, 64, 0, 1, sync_stack_dabt
+#endif
+	entry_handler	1, h, 64, 0, 0, sync
+	entry_handler	1, h, 64, 1, 0, irq
+	entry_handler	1, h, 64, 1, 0, fiq
+	entry_handler	1, h, 64, 0, 0, error
 
-	entry_handler	0, t, 64, 0, sync
-	entry_handler	0, t, 64, 0, irq
-	entry_handler	0, t, 64, 0, fiq
-	entry_handler	0, t, 64, 0, error
+	entry_handler	0, t, 64, 0, 0, sync
+	entry_handler	0, t, 64, 0, 0, irq
+	entry_handler	0, t, 64, 0, 0, fiq
+	entry_handler	0, t, 64, 0, 0, error
 
-	entry_handler	0, t, 32, 0, sync
-	entry_handler	0, t, 32, 0, irq
-	entry_handler	0, t, 32, 0, fiq
-	entry_handler	0, t, 32, 0, error
+	entry_handler	0, t, 32, 0, 0, sync
+	entry_handler	0, t, 32, 0, 0, irq
+	entry_handler	0, t, 32, 0, 0, fiq
+	entry_handler	0, t, 32, 0, 0, error
 
 SYM_CODE_START_LOCAL(ret_to_kernel)
-	kernel_exit 1
+	kernel_exit el=1
 SYM_CODE_END(ret_to_kernel)
+
+#ifdef CONFIG_DYNAMIC_STACK
+	/*
+	 * Special version that return us to the kernel from a page
+	 * fault that happened when we were using the stack.
+	 */
+SYM_CODE_START_LOCAL(ret_to_kernel_el1_sync_stack_dabt)
+	kernel_exit el=1, sync_stack_dabt=1
+SYM_CODE_END(ret_to_kernel_el1_sync_stack_dabt)
+#endif
 
 SYM_CODE_START_LOCAL(ret_to_user)
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
@@ -683,7 +787,7 @@ SYM_CODE_START_LOCAL(ret_to_user)
 #ifdef CONFIG_KSTACK_ERASE
 	bl	stackleak_erase_on_task_stack
 #endif
-	kernel_exit 0
+	kernel_exit el=0
 SYM_CODE_END(ret_to_user)
 
 	.popsection				// .entry.text
@@ -851,12 +955,12 @@ SYM_CODE_END(tramp_exit)
  */
 	.macro generate_el1_vector, bhb
 .Lvector_start\@:
-	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
+	kernel_ventry_el1_sync	1, t, 64, sync	// Synchronous EL1t
 	kernel_ventry_el1_irq	t, irq		// IRQ EL1t
 	kernel_ventry_el1_irq	t, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
-	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
+	kernel_ventry_el1_sync	1, h, 64, sync	// Synchronous EL1h
 	kernel_ventry_el1_irq	h, irq		// IRQ EL1h
 	kernel_ventry_el1_irq	h, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h

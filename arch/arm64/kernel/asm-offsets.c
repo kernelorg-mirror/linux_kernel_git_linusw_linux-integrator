@@ -81,6 +81,14 @@ int main(void)
    */
   DEFINE(S_IRQ_EL1_SP,		offsetof(struct pt_regs, tpidr_el0));
   DEFINE(S_TPIDRRO_EL0,		offsetof(struct pt_regs, tpidrro_el0));
+#ifdef CONFIG_DYNAMIC_STACK
+  /*
+   * TPIDR[RO]_EL0 is used on EL0 exceptions going from EL0->EL1 but
+   * isn't used by the EL1 stack DABT handler that only executes from
+   * EL1->EL1, so recycle it.
+   */
+  DEFINE(S_STACK_DABT_SP,	offsetof(struct pt_regs, tpidrro_el0));
+#endif
   DEFINE(S_SDEI_TTBR1,		offsetof(struct pt_regs, sdei_ttbr1));
   DEFINE(S_PMR,			offsetof(struct pt_regs, pmr));
   DEFINE(S_STACKFRAME,		offsetof(struct pt_regs, stackframe));
