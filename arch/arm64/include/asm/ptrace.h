@@ -167,6 +167,8 @@ struct pt_regs {
 	s32 syscallno;
 	u32 pmr;
 
+	u64 tpidr_el0;
+	u64 tpidrro_el0;
 	u64 sdei_ttbr1;
 	struct frame_record_meta stackframe;
 
