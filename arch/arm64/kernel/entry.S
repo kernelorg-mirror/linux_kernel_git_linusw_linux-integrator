@@ -224,6 +224,17 @@ alternative_cb_end
 	msr	sp_el0, tsk
 
 	/*
+	 * Save two registers on stack for dynamic stack clobbering - with
+	 * dynamic stack we clobber these when working inside the kernel,
+	 * but make sure to write into the pt_regs copies instead of the
+	 * actual registers when we actually want to change them.
+	 */
+	mrs	x20, tpidr_el0
+	str	x20, [sp, #S_TPIDR_EL0]
+	mrs	x20, tpidrro_el0
+	str	x20, [sp, #S_TPIDRRO_EL0]
+
+	/*
 	 * Ensure MDSCR_EL1.SS is clear, since we can unmask debug exceptions
 	 * when scheduling.
 	 */
@@ -411,6 +422,17 @@ alternative_else_nop_endif
 
 	msr	elr_el1, x21			// set up the return data
 	msr	spsr_el1, x22
+	/*
+	 * Return from exception to userspace:
+	 * We have clobbered TPIDR_EL0 and TPIDRRO_EL0 so restore them
+	 * from pt_regs.
+	 */
+	.if	\el == 0
+	ldr	x0, [sp, #S_TPIDR_EL0]
+	msr	tpidr_el0, x0
+	ldr	x0, [sp, #S_TPIDRRO_EL0] // not needed? just set it to 0?
+	msr	tpidrro_el0, x0
+	.endif
 	ldp	x0, x1, [sp, #16 * 0]
 	ldp	x2, x3, [sp, #16 * 1]
 	ldp	x4, x5, [sp, #16 * 2]
