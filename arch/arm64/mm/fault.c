@@ -925,6 +925,21 @@ static const struct fault_info fault_info[] = {
 	{ do_bad,		SIGKILL, SI_KERNEL,	"unknown 63"			},
 };
 
+#ifdef CONFIG_DYNAMIC_STACK
+void noinstr do_stack_abort(unsigned long far, struct pt_regs *regs)
+{
+	unsigned long addr = untagged_addr(far);
+
+	/* Deal with dynamic paging in of new physical stack pages */
+	if (!dynamic_stack_fault(current, addr)) {
+		/* Not good */
+		unsigned long esr = read_sysreg(esr_el1);
+		die_kernel_fault("dynamic stack fault", addr, esr, regs);
+	}
+	flush_tlb_kernel_range(addr, addr + PAGE_SIZE);
+}
+#endif
+
 void do_mem_abort(unsigned long far, unsigned long esr, struct pt_regs *regs)
 {
 	const struct fault_info *inf = esr_to_fault_info(esr);

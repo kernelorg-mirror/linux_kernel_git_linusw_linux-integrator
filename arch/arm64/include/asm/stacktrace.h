@@ -20,6 +20,37 @@
 extern void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk,
 			   const char *loglvl);
 
+#ifdef CONFIG_DYNAMIC_STACK
+
+DECLARE_PER_CPU(unsigned long *, sync_stack_ptr);
+
+static inline struct stack_info stackinfo_get_sync(void)
+{
+	unsigned long low = (unsigned long)raw_cpu_read(sync_stack_ptr);
+	unsigned long high = low + SYNC_STACK_SIZE;
+
+	return (struct stack_info) {
+		.low = low,
+		.high = high,
+	};
+}
+
+static inline bool on_sync_stack(unsigned long sp, unsigned long size)
+{
+	struct stack_info info = stackinfo_get_sync();
+	return stackinfo_on_stack(&info, sp, size);
+}
+
+#else
+
+/* Stub if we do not have dynamic stack */
+static inline bool on_sync_stack(unsigned long sp, unsigned long size)
+{
+	return false;
+}
+
+#endif
+
 DECLARE_PER_CPU(unsigned long *, irq_stack_ptr);
 
 static inline struct stack_info stackinfo_get_irq(void)
