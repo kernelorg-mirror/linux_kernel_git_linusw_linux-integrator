@@ -167,6 +167,10 @@ struct pt_regs {
 	s32 syscallno;
 	u32 pmr;
 
+#ifdef CONFIG_DYNAMIC_STACK
+	u64 stack_dabt_sp;
+	u64 padding;
+#endif
 	u64 tpidr_el0;
 	u64 tpidrro_el0;
 	u64 sdei_ttbr1;

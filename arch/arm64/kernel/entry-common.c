@@ -153,7 +153,11 @@ static void do_interrupt_handler(struct pt_regs *regs,
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	if (on_thread_stack())
+	/*
+	 * Here we can be on the task stack or we can be on the sync stack
+	 * so check pointedly whether we are on the irq stack or not.
+	 */
+	if (!on_irq_stack(current_stack_pointer, 1))
 		call_on_irq_stack(regs, handler);
 	else
 		handler(regs);
@@ -310,6 +314,7 @@ static void debug_exception_exit(struct pt_regs *regs)
 }
 NOKPROBE_SYMBOL(debug_exception_exit);
 
+UNHANDLED(el1t, 64, sync_stack_dabt)
 UNHANDLED(el1t, 64, sync)
 UNHANDLED(el1t, 64, irq)
 UNHANDLED(el1t, 64, fiq)
@@ -448,6 +453,21 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
+
+#ifdef CONFIG_DYNAMIC_STACK
+asmlinkage void noinstr el1h_64_sync_stack_dabt_handler(struct pt_regs *regs)
+{
+	unsigned long far = read_sysreg(far_el1);
+	unsigned long addr = untagged_addr(far);
+	unsigned long stack = (unsigned long)current->stack;
+
+	/* We ran over the top of the stack! */
+	if (addr >= (stack - PAGE_SIZE) && addr < stack)
+		handle_bad_stack(regs);
+
+	do_stack_abort(far, regs);
+}
+#endif
 
 asmlinkage void noinstr el1h_64_sync_handler(struct pt_regs *regs)
 {

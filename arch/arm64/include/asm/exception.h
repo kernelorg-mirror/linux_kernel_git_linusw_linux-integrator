@@ -28,11 +28,13 @@ static inline unsigned long disr_to_esr(u64 disr)
 
 asmlinkage void __noreturn handle_bad_stack(struct pt_regs *regs);
 
+asmlinkage void el1t_64_sync_stack_dabt_handler(struct pt_regs *regs);
 asmlinkage void el1t_64_sync_handler(struct pt_regs *regs);
 asmlinkage void el1t_64_irq_handler(struct pt_regs *regs);
 asmlinkage void el1t_64_fiq_handler(struct pt_regs *regs);
 asmlinkage void el1t_64_error_handler(struct pt_regs *regs);
 
+asmlinkage void el1h_64_sync_stack_dabt_handler(struct pt_regs *regs);
 asmlinkage void el1h_64_sync_handler(struct pt_regs *regs);
 asmlinkage void el1h_64_irq_handler(struct pt_regs *regs);
 asmlinkage void el1h_64_fiq_handler(struct pt_regs *regs);
@@ -52,6 +54,7 @@ asmlinkage void call_on_irq_stack(struct pt_regs *regs,
 				  void (*func)(struct pt_regs *));
 asmlinkage void asm_exit_to_user_mode(struct pt_regs *regs);
 
+void do_stack_abort(unsigned long far, struct pt_regs *regs);
 void do_mem_abort(unsigned long far, unsigned long esr, struct pt_regs *regs);
 void do_el0_undef(struct pt_regs *regs, unsigned long esr);
 void do_el1_undef(struct pt_regs *regs, unsigned long esr);
