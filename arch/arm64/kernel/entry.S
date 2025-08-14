@@ -120,8 +120,15 @@
 	msr	tpidr_el0, x16
 	msr	tpidrro_el0, x17
 	ldr_this_cpu x16, sync_stack_ptr, x17
-	mov	x17, sp		// Save old SP in x17
-	add	sp, x16, #SYNC_STACK_SIZE
+	add	x16, x16, #SYNC_STACK_SIZE
+	// Check SP: are we already on the sync stack?
+	mov	x17, sp				// Old SP in x17
+	sub	x16, x16, x17			// delta with top of sync stack
+	tst	x16, #~(SYNC_STACK_SIZE - 1)	// within range?
+	b.eq	.Luse_current_sp\@
+	add	x16, x17, x16			// Set SP to top of sync stack, else use current!
+	mov	sp, x16
+.Luse_current_sp\@:
 	sub	sp, sp, #8
 	str	x17, [sp]	// Save old SP on the sync stack
 	sub	sp, sp, #PT_REGS_SIZE

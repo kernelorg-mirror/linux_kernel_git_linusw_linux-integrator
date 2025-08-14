@@ -588,13 +588,17 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 }
 
 #define EL1_FAULT_ON_STACK 1
-#define EL1_STACK_OVERFLOW 2
+#define EL1_FAULT_ON_SYNC_STACK 2
+#define EL1_STACK_OVERFLOW 3
+
+DECLARE_PER_CPU(unsigned long *, sync_stack_ptr);
 
 static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 						     unsigned long far)
 {
 	unsigned long stack = (unsigned long)current->stack;
 	unsigned long addr = untagged_addr(far);
+	unsigned long sync_stack = (unsigned long)this_cpu_read(sync_stack_ptr);
 
 	/*
 	 * Is this even a page fault?
@@ -604,12 +608,21 @@ static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 	if (ESR_ELx_EC(esr) !=  ESR_ELx_EC_DABT_CUR)
 		return 0;
 
+	if (addr > sync_stack && addr < sync_stack + SYNC_STACK_SIZE) {
+		pr_info("RECURSIVE DABT AT 0x%08lx, SP 0x%08lx\n",
+			addr, current_stack_pointer);
+		return EL1_FAULT_ON_SYNC_STACK;
+	}
+
 	if (addr < stack || addr >= stack + THREAD_SIZE)
 		return 0;
 
 	/* We hit the botton of the stack: overflow! */
 	if (addr == stack)
 		return EL1_STACK_OVERFLOW;
+
+	pr_info("PAGE FAULT ON STACK AT 0x%08lx, SP 0x%08lx\n",
+		addr, current_stack_pointer);
 
 	/* Actually a page fault on the stack! */
 	return EL1_FAULT_ON_STACK;
@@ -635,8 +648,7 @@ asmlinkage int noinstr el1h_64_sync_handler(struct pt_regs *regs)
 		fault = el1_page_fault_on_stack(esr, far);
 		if (fault == EL1_STACK_OVERFLOW)
 			handle_bad_stack(regs);
-		if (fault == EL1_FAULT_ON_STACK) {
-			pr_info("PAGE FAULT ON STACK!!\n");
+		if (fault == EL1_FAULT_ON_STACK || fault == EL1_FAULT_ON_SYNC_STACK) {
 			do_stack_abort(far, regs);
 			return 1;
 		} else {
