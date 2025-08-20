@@ -618,7 +618,7 @@ static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 }
 
 /* Returns 1 if we are still on the sync stack, else 0 */
-asmlinkage int noinstr el1h_64_sync_handler(struct pt_regs *regs)
+asmlinkage int el1h_64_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
 

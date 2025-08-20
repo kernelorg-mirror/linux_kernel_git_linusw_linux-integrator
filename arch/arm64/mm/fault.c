@@ -304,6 +304,8 @@ static void die_kernel_fault(const char *msg, unsigned long addr,
 	pr_alert("Unable to handle kernel %s at virtual address %016lx\n", msg,
 		 addr);
 
+	tracing_off();
+
 	kasan_non_canonical_hook(addr);
 
 	mem_abort_decode(esr);
@@ -392,9 +394,14 @@ static void __do_kernel_fault(unsigned long addr, unsigned long esr,
 	} else if (addr < PAGE_SIZE) {
 		msg = "NULL pointer dereference";
 	} else {
-		if (esr_fsc_is_translation_fault(esr) &&
-		    kfence_handle_page_fault(addr, esr & ESR_ELx_WNR, regs))
-			return;
+		if (esr_fsc_is_translation_fault(esr)) {
+			if (kfence_handle_page_fault(addr, esr & ESR_ELx_WNR, regs)) {
+				pr_err("kfence handled page fault\n");
+				return;
+			} else {
+				pr_err("kfence could not handle page fault\n");
+			}
+		}
 
 		msg = "paging request";
 	}
@@ -788,6 +795,9 @@ static int __kprobes do_translation_fault(unsigned long far,
 	if (is_ttbr0_addr(addr))
 		return do_page_fault(far, esr, regs);
 
+	pr_err("do_translation_fault()->do_bad_area() address not in TTBR0 range\n");
+	if (is_ttbr1_addr(addr))
+		pr_err("address 0x%08lx is in TTBR1 address range\n", addr);
 	do_bad_area(far, esr, regs);
 	return 0;
 }

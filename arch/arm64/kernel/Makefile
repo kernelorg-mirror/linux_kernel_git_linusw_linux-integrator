@@ -22,7 +22,7 @@ KASAN_SANITIZE_stacktrace.o := n
 # It's not safe to invoke KCOV when portions of the kernel environment aren't
 # available or are out-of-sync with HW state. Since `noinstr` doesn't always
 # inhibit KCOV instrumentation, disable it for the entire compilation unit.
-KCOV_INSTRUMENT_entry-common.o := n
+#KCOV_INSTRUMENT_entry-common.o := n
 KCOV_INSTRUMENT_idle.o := n
 
 # Object file lists.
