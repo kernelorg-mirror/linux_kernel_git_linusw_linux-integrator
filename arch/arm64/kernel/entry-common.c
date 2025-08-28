@@ -612,7 +612,7 @@ static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 		return EL1_STACK_OVERFLOW;
 
 	/* Actually a page fault on the stack! */
-	pr_info("PAGE FAULT ON STACK AT 0x%08lx\n", addr);
+	//pr_info("PAGE FAULT ON STACK AT 0x%08lx\n", addr);
 
 	return EL1_FAULT_ON_STACK;
 }
