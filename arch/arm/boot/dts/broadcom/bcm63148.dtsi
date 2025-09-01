@@ -152,7 +152,7 @@
 		rng@300 {
 			compatible = "brcm,iproc-rng200";
 			reg = <0x300 0x28>;
-			interrupts = <GIC_SPI 85 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
 		uart0: serial@600 {
