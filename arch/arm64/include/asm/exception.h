@@ -48,7 +48,7 @@ asmlinkage void el0t_32_irq_handler(struct pt_regs *regs);
 asmlinkage void el0t_32_fiq_handler(struct pt_regs *regs);
 asmlinkage void el0t_32_error_handler(struct pt_regs *regs);
 
-asmlinkage void switch_sync_stack_to_task_stack(void);
+asmlinkage struct pt_regs * switch_sync_stack_to_current(void);
 asmlinkage void call_on_irq_stack(struct pt_regs *regs,
 				  void (*func)(struct pt_regs *));
 asmlinkage void asm_exit_to_user_mode(struct pt_regs *regs);

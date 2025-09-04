@@ -54,8 +54,9 @@
 .Lskip_tramp_vectors_cleanup\@:
 	.endif
 
-	sub	sp, sp, #PT_REGS_SIZE
 #if !defined(CONFIG_DYNAMIC_STACK)
+	sub	sp, sp, #PT_REGS_SIZE
+
 	/*
 	 * Test whether the SP has overflowed, without corrupting a GPR.
 	 * Task and IRQ stacks are aligned so that SP & (1 << THREAD_SHIFT)
@@ -101,16 +102,11 @@
 	/* We were already on the overflow stack. Restore sp/x0 and carry on. */
 	sub	sp, sp, x0
 	mrs	x0, tpidrro_el0
-#endif /* !CONFIG_DYNAMIC_STACK */
 	b	el\el\ht\()_\regsize\()_\label
 .org .Lventry_start\@ + 128	// Did we overflow the ventry slot?
 	.endm
 
-#ifdef CONFIG_DYNAMIC_STACK
-	/* Only used for EL1 sync exceptions */
-	.macro kernel_ventry_el1_sync, el:req, ht:req, regsize:req, label:req
-	.align 7
-.Lventry_el1_sync_start\@:
+#else /* CONFIG_DYNAMIC_STACK */
 	/*
 	 * Call the sync handler on the special sync stack since we could
 	 * have just encountered a data abort on the task stack, and in
@@ -120,8 +116,15 @@
 	msr	tpidr_el0, x16
 	msr	tpidrro_el0, x17
 	ldr_this_cpu x16, sync_stack_ptr, x17
+	add	x16, x16, #SYNC_STACK_SIZE
+	// Check SP: are we already on the sync stack?
 	mov	x17, sp		// Save old SP in x17
-	add	sp, x16, #SYNC_STACK_SIZE
+	sub	x16, x16, x17	// Delta with top of sync stack
+	tst	x16, #~(SYNC_STACK_SIZE - 1)  // within range?
+	b.eq	.Luse_current_sp\@
+	add	x16, x17, x16	// Set SP to the top of the sync stack
+	mov	sp, x16
+.Luse_current_sp\@:
 	sub	sp, sp, #8
 	str	x17, [sp]	// Save old SP on the sync stack
 	sub	sp, sp, #PT_REGS_SIZE
@@ -129,11 +132,8 @@
 	mrs	x16, tpidr_el0
 	mrs	x17, tpidrro_el0
 	b	el\el\ht\()_\regsize\()_\label
-.org .Lventry_el1_sync_start\@ + 128	// Did we overflow the ventry slot?
+.org .Lventry_start\@ + 128	// Did we overflow the ventry slot?
 	.endm
-#else
-	/* Just an alias to the kernel_ventry macro */
-#define kernel_ventry_el1_sync kernel_ventry
 #endif /* CONFIG_DYNAMIC_STACK */
 
 	.macro	tramp_alias, dst, sym
@@ -604,12 +604,12 @@ tsk	.req	x28		// current thread_info
 
 	.align	11
 SYM_CODE_START(vectors)
-	kernel_ventry_el1_sync	1, t, 64, sync		// Synchronous EL1t
+	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
 	kernel_ventry	1, t, 64, irq		// IRQ EL1t
 	kernel_ventry	1, t, 64, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
-	kernel_ventry_el1_sync	1, h, 64, sync		// Synchronous EL1h
+	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
 	kernel_ventry	1, h, 64, irq		// IRQ EL1h
 	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
@@ -736,7 +736,7 @@ SYM_CODE_START_LOCAL(ret_to_kernel_el1_sync)
 	kernel_exit el=1, sync=1
 SYM_CODE_END(ret_to_kernel_el1_sync)
 
-SYM_FUNC_START(switch_sync_stack_to_task_stack)
+SYM_FUNC_START(switch_sync_stack_to_current)
 	// Obtain the task stack SP which is helpfully placed
 	// on the bottom of the special sync stack.
 	ldr_this_cpu x0, sync_stack_ptr, x1
@@ -744,6 +744,7 @@ SYM_FUNC_START(switch_sync_stack_to_task_stack)
 	sub	x0, x0, #8
 	ldr	x1, [x0] // x1 = task stack SP
 	mov	x3, sp // copy of current SP in x3
+	mov	x4, x1 // copy of task stack SP in x4
 	// Copy the contents of the sync stack to the task stack
 0:
 	sub	x0, x0, #8
@@ -755,9 +756,12 @@ SYM_FUNC_START(switch_sync_stack_to_task_stack)
 	// Switch to the task stack, ditch the old sync stack and
 	// pretend like nothing happened
 	mov	sp, x1
+	// Obtain a valid regs pointer and put it into x0 as
+	// return value when called from C
+	sub	x0, x4, #PT_REGS_SIZE
 	ret
-SYM_FUNC_END(switch_sync_stack_to_task_stack)
-NOKPROBE(switch_sync_stack_to_task_stack)
+SYM_FUNC_END(switch_sync_stack_to_current)
+NOKPROBE(switch_sync_stack_to_current)
 #endif
 
 SYM_CODE_START_LOCAL(ret_to_user)
@@ -934,12 +938,12 @@ SYM_CODE_END(tramp_exit)
  */
 	.macro generate_el1_vector, bhb
 .Lvector_start\@:
-	kernel_ventry_el1_sync	1, t, 64, sync		// Synchronous EL1t
+	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
 	kernel_ventry	1, t, 64, irq		// IRQ EL1t
 	kernel_ventry	1, t, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
-	kernel_ventry_el1_sync	1, h, 64, sync		// Synchronous EL1h
+	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
 	kernel_ventry	1, h, 64, irq		// IRQ EL1h
 	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h

@@ -588,13 +588,17 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 }
 
 #define EL1_FAULT_ON_STACK 1
-#define EL1_STACK_OVERFLOW 2
+#define EL1_FAULT_ON_SYNC_STACK 2
+#define EL1_STACK_OVERFLOW 3
+
+DECLARE_PER_CPU(unsigned long *, sync_stack_ptr);
 
 static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 						     unsigned long far)
 {
 	unsigned long stack = (unsigned long)current->stack;
 	unsigned long addr = untagged_addr(far);
+	unsigned long sync_stack = (unsigned long)this_cpu_read(sync_stack_ptr);
 
 	/*
 	 * Is this even a page fault?
@@ -604,6 +608,12 @@ static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 	if (ESR_ELx_EC(esr) !=  ESR_ELx_EC_DABT_CUR)
 		return 0;
 
+	if (addr > sync_stack && addr < sync_stack + SYNC_STACK_SIZE) {
+		pr_info("RECURSIVE DABT AT 0x%08lx, SP 0x%08lx\n",
+			addr, current_stack_pointer);
+		return EL1_FAULT_ON_SYNC_STACK;
+	}
+
 	if (addr < stack || addr >= stack + THREAD_SIZE)
 		return 0;
 
@@ -612,7 +622,7 @@ static unsigned int  noinstr el1_page_fault_on_stack(unsigned long esr,
 		return EL1_STACK_OVERFLOW;
 
 	/* Actually a page fault on the stack! */
-	//pr_info("PAGE FAULT ON STACK AT 0x%08lx\n", addr);
+	pr_info("PAGE FAULT ON STACK AT 0x%08lx\n", addr);
 
 	return EL1_FAULT_ON_STACK;
 }
@@ -637,11 +647,11 @@ asmlinkage int el1h_64_sync_handler(struct pt_regs *regs)
 		fault = el1_page_fault_on_stack(esr, far);
 		if (fault == EL1_STACK_OVERFLOW)
 			handle_bad_stack(regs);
-		if (fault == EL1_FAULT_ON_STACK) {
+		if (fault == EL1_FAULT_ON_STACK || fault == EL1_FAULT_ON_SYNC_STACK) {
 			do_stack_abort(far, regs);
 			return 1;
 		} else {
-			switch_sync_stack_to_task_stack();
+			regs = switch_sync_stack_to_current();
 		}
 	}
 
@@ -726,11 +736,13 @@ static void noinstr el1_interrupt(struct pt_regs *regs,
 
 asmlinkage void noinstr el1h_64_irq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	el1_interrupt(regs, handle_arch_irq);
 }
 
 asmlinkage void noinstr el1h_64_fiq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	el1_interrupt(regs, handle_arch_fiq);
 }
 
@@ -738,6 +750,7 @@ asmlinkage void noinstr el1h_64_error_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
 
+	regs = switch_sync_stack_to_current();
 	local_daif_restore(DAIF_ERRCTX);
 	arm64_enter_nmi(regs);
 	do_serror(regs, esr);
@@ -949,6 +962,8 @@ asmlinkage void noinstr el0t_64_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
 
+	regs = switch_sync_stack_to_current();
+
 	switch (ESR_ELx_EC(esr)) {
 	case ESR_ELx_EC_SVC64:
 		el0_svc(regs);
@@ -1037,6 +1052,7 @@ static void noinstr __el0_irq_handler_common(struct pt_regs *regs)
 
 asmlinkage void noinstr el0t_64_irq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_irq_handler_common(regs);
 }
 
@@ -1047,6 +1063,7 @@ static void noinstr __el0_fiq_handler_common(struct pt_regs *regs)
 
 asmlinkage void noinstr el0t_64_fiq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_fiq_handler_common(regs);
 }
 
@@ -1065,6 +1082,7 @@ static void noinstr __el0_error_handler_common(struct pt_regs *regs)
 
 asmlinkage void noinstr el0t_64_error_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_error_handler_common(regs);
 }
 
@@ -1097,6 +1115,8 @@ static void noinstr el0_bkpt32(struct pt_regs *regs, unsigned long esr)
 asmlinkage void noinstr el0t_32_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);
+
+	regs = switch_sync_stack_to_current();
 
 	switch (ESR_ELx_EC(esr)) {
 	case ESR_ELx_EC_SVC32:
@@ -1146,16 +1166,19 @@ asmlinkage void noinstr el0t_32_sync_handler(struct pt_regs *regs)
 
 asmlinkage void noinstr el0t_32_irq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_irq_handler_common(regs);
 }
 
 asmlinkage void noinstr el0t_32_fiq_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_fiq_handler_common(regs);
 }
 
 asmlinkage void noinstr el0t_32_error_handler(struct pt_regs *regs)
 {
+	regs = switch_sync_stack_to_current();
 	__el0_error_handler_common(regs);
 }
 #else /* CONFIG_COMPAT */
