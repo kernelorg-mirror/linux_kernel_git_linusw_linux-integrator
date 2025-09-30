@@ -58,6 +58,9 @@
 	sfp0: sfp0 {
 		compatible = "sff,sfp";
 		i2c-bus = <&i2c0>;
+		/* "Rogue onu" pin in position B also called "tx-sd" */
+		pinctrl-names = "default";
+		pinctrl-0 = <&pins_rogue_onu_b>;
 	};
 };
 
@@ -82,6 +85,8 @@
 &leds {
 	status = "okay";
 	brcm,serial-shift-bits = <16>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pins_ser_led_a>;
 
 	led@0 {
 		reg = <0>;
