@@ -187,6 +187,228 @@
 			status = "disabled";
 		};
 
+		pinctrl@550 {
+			compatible = "brcm,bcm6846-pinctrl";
+			reg = <0x550 0x10>;
+
+			pins_led_0_a: led-0-a-pins {
+				function = "led_0";
+				groups = "led_0_grp_a";
+			};
+
+			pins_led_0_b: led-0-b-pins {
+				function = "led_0";
+				groups = "led_0_grp_b";
+			};
+
+			pins_led_1_a: led-1-a-pins {
+				function = "led_1";
+				groups = "led_1_grp_a";
+			};
+
+			pins_led_1_b: led-1-b-pins {
+				function = "led_1";
+				groups = "led_1_grp_b";
+			};
+
+			pins_led_2_a: led-2-a-pins {
+				function = "led_2";
+				groups = "led_2_grp_a";
+			};
+
+			pins_led_2_b: led-2-b-pins {
+				function = "led_2";
+				groups = "led_2_grp_b";
+			};
+
+			pins_led_3_a: led-3-a-pins {
+				function = "led_3";
+				groups = "led_3_grp_a";
+			};
+
+			pins_led_3_b: led-3-b-pins {
+				function = "led_3";
+				groups = "led_3_grp_b";
+			};
+
+			pins_led_4_a: led-4-a-pins {
+				function = "led_4";
+				groups = "led_4_grp_a";
+			};
+
+			pins_led_4_b: led-4-b-pins {
+				function = "led_4";
+				groups = "led_4_grp_b";
+			};
+
+			pins_led_5_a: led-5-a-pins {
+				function = "led_5";
+				groups = "led_5_grp_a";
+			};
+
+			pins_led_5_b: led-5-b-pins {
+				function = "led_5";
+				groups = "led_5_grp_b";
+			};
+
+			pins_led_6_a: led-6-a-pins {
+				function = "led_6";
+				groups = "led_6_grp_a";
+			};
+
+			pins_led_6_b: led-6-b-pins {
+				function = "led_6";
+				groups = "led_6_grp_b";
+			};
+
+			pins_led_7_a: led-7-a-pins {
+				function = "led_7";
+				groups = "led_7_grp_a";
+			};
+
+			pins_led_7_b: led-7-b-pins {
+				function = "led_7";
+				groups = "led_7_grp_b";
+			};
+
+			pins_led_8_a: led-8-a-pins {
+				function = "led_8";
+				groups = "led_8_grp_a";
+			};
+
+			pins_led_8_b: led-8-b-pins {
+				function = "led_8";
+				groups = "led_8_grp_b";
+			};
+
+			pins_led_9_a: led-9-a-pins {
+				function = "led_9";
+				groups = "led_9_grp_a";
+			};
+
+			pins_led_9_b: led-9-b-pins {
+				function = "led_9";
+				groups = "led_9_grp_b";
+			};
+
+			pins_led_10_a: led-10-a-pins {
+				function = "led_10";
+				groups = "led_10_grp_a";
+			};
+
+			pins_led_10_b: led-10-b-pins {
+				function = "led_10";
+				groups = "led_10_grp_b";
+			};
+
+			pins_led_11_a: led-11-a-pins {
+				function = "led_11";
+				groups = "led_11_grp_a";
+			};
+
+			pins_led_11_b: led-11-b-pins {
+				function = "led_11";
+				groups = "led_11_grp_b";
+			};
+
+			pins_led_12_a: led-12-a-pins {
+				function = "led_12";
+				groups = "led_12_grp_a";
+			};
+
+			pins_led_12_b: led-12-b-pins {
+				function = "led_12";
+				groups = "led_12_grp_b";
+			};
+
+			pins_led_13: led-13-pins {
+				function = "led_13";
+				groups = "led_13_grp";
+			};
+
+			pins_led_14: led-14-pins {
+				function = "led_14";
+				groups = "led_14_grp";
+			};
+
+			pins_led_15: led-15-pins {
+				function = "led_15";
+				groups = "led_15_grp";
+			};
+
+			pins_led_16: led-16-pins {
+				function = "led_16";
+				groups = "led_16_grp";
+			};
+
+			pins_led_17: led-17-pins {
+				function = "led_17";
+				groups = "led_17_grp";
+			};
+
+			/* Using pins 18, 24, 25 */
+			pins_ser_led_a: ser-led-a-pins {
+				function = "ser_led";
+				groups = "ser_led_grp_a";
+			};
+
+			/* Using pins 43, 44, 45 */
+			pins_ser_led_b: ser-led-b-pins {
+				function = "ser_led";
+				groups = "ser_led_grp_b";
+			};
+
+			pins_nand: nand-pins {
+				function = "nand";
+				groups = "nand_ctrl_grp", "nand_data_grp";
+			};
+
+			/* Including the Write Protect pin */
+			pins_nand_wp: nand-wp-pins {
+				function = "nand";
+				groups = "nand_ctrl_grp", "nand_data_grp", "nand_wp_grp";
+			};
+
+			pins_i2c: i2c-pins {
+				function = "i2c";
+				groups = "i2c_grp";
+			};
+
+			pins_mii: mii-pins {
+				function = "mii";
+				groups = "mii_grp";
+			};
+
+			/*
+			 * Configs adding rx ok and start stop pins can be made, usually
+			 * we just want plain RGMII.
+			 */
+			pins_rgmii: rgmii-pins {
+				function = "rgmii";
+				groups = "rgmii_grp";
+			};
+
+			pins_rogue_onu_a: rogue-onu-a-pins {
+				function = "rogue_onu";
+				groups = "rogue_onu_grp_a";
+			};
+
+			pins_rogue_onu_b: rogue-onu-b-pins {
+				function = "rogue_onu";
+				groups = "rogue_onu_grp_b";
+			};
+
+			/*
+			 * More elaborate WAN groups can be constructed for special cases
+			 * usually we just want to access MDIO.
+			 */
+			pins_wan_mdio: wan-mdio-pins {
+				function = "wan";
+				groups = "wan_mdio_grp";
+			};
+
+		};
+
 		uart0: serial@640 {
 			compatible = "brcm,bcm6345-uart";
 			reg = <0x640 0x1b>;
@@ -242,6 +464,8 @@
 			reg-names = "mdio", "mdio_indir_rw";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pins_wan_mdio>;
 			status = "disabled";
 		};
 
@@ -252,6 +476,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			clock-frequency = <97500>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pins_i2c>;
 			status = "disabled";
 		};
 
