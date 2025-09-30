@@ -974,6 +974,8 @@ static int bcmbca_pinctrl_set_mux(struct pinctrl_dev *pctrl_dev,
 		lsb |= group->pins[i].number;
 		lsb |= group->pins[i].function << BCMBCA_TEST_PORT_LSB_PINMUX_DATA_SHIFT;
 
+		dev_info(bcmbca_pinctrl->dev, "set pin %u to function %u\n",
+			 group->pins[i].number, group->pins[i].function);
 		writel(0x0, bcmbca_pinctrl->base + BCMBCA_TEST_PORT_BLOCK_DATA_MSB);
 		writel(lsb, bcmbca_pinctrl->base + BCMBCA_TEST_PORT_BLOCK_DATA_LSB);
 		writel(BCMBCA_TEST_PORT_CMD_LOAD_MUX_REG,
