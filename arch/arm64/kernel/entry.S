@@ -100,6 +100,37 @@
 .org .Lventry_start\@ + 128	// Did we overflow the ventry slot?
 	.endm
 
+	/* Only used for EL1 irq exceptions */
+	.macro kernel_ventry_el1_irq, ht:req
+	.align 7
+.Lventry_el1_irq_start\@:
+	/* Immediately switch to the IRQ stack when handling EL1H IRQ exceptions */
+	// Save x0, x1 in tpidr_el0, tpidrro_el0 so we have two scratch
+	// registers to use.
+	msr	tpidr_el0, x0
+	msr	tpidrro_el0, x1
+	ldr_this_cpu x0, irq_stack_ptr, x1
+	mov	x1, sp		// Save old SP in x1
+	cmp	x1, x0
+	b.lo	.Lventry_el1_irq_switch\@ // SP (x1) < irq stack top (x0)
+	add	x0, x0, #IRQ_STACK_SIZE
+	cmp	x1, x0
+	// We are already on the IRQ stack, proceed
+	b.lo	.Lventry_el1_irq_already_irq_sp\@ // SP (x1) < irq stack bottom (x0)
+	sub	x0, x0, #IRQ_STACK_SIZE // Get back to the top of the stack
+.Lventry_el1_irq_switch\@:
+	add	sp, x0, #IRQ_STACK_SIZE // Move SP to bottom of IRQ stack
+.Lventry_el1_irq_already_irq_sp\@:
+	str	x1, [sp, #-16]!	// Save old SP on the IRQ stack
+	// Just go on and stash registers on the IRQ stack
+	sub	sp, sp, #PT_REGS_SIZE
+	// Restore x0, x1 from in tpidr_el0, tpidrro_el0
+	mrs	x0, tpidr_el0
+	mrs	x1, tpidrro_el0
+	b	el1\ht\()_64_irq
+.org .Lventry_el1_irq_start\@ + 128	// Did we overflow the ventry slot?
+	.endm
+
 #ifdef CONFIG_DYNAMIC_STACK
 	/* Only used for EL1 sync exceptions */
 	.macro kernel_ventry_el1_sync, el:req, ht:req, regsize:req, label:req
@@ -616,12 +647,12 @@ tsk	.req	x28		// current thread_info
 	.align	11
 SYM_CODE_START(vectors)
 	kernel_ventry_el1_sync	1, t, 64, sync	// Synchronous EL1t
-	kernel_ventry	1, t, 64, irq		// IRQ EL1t
+	kernel_ventry_el1_irq	t		// IRQ EL1t
 	kernel_ventry	1, t, 64, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
 	kernel_ventry_el1_sync	1, h, 64, sync	// Synchronous EL1h
-	kernel_ventry	1, h, 64, irq		// IRQ EL1h
+	kernel_ventry_el1_irq	h		// IRQ EL1h
 	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
 
@@ -686,6 +717,11 @@ SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	 * This is probably a bug in the GNU Assembler that I work
 	 * around like this.
 	*/
+	.ifeqs  "\label", "irq"
+	.if \el != 0
+	b	ret_to_kernel_el1_sync_stack_dabt
+	.endif
+	.else
 	.ifeqs  "\label", "sync_stack_dabt"
 	.if \el != 0
 	b	ret_to_kernel_el1_sync_stack_dabt
@@ -693,6 +729,7 @@ SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	.else
 	.if \el != 0
 	b	ret_to_kernel
+	.endif
 	.endif
 	.endif
 #else
@@ -731,6 +768,10 @@ SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
 SYM_CODE_START_LOCAL(ret_to_kernel)
 	kernel_exit el=1
 SYM_CODE_END(ret_to_kernel)
+
+SYM_CODE_START_LOCAL(ret_to_kernel_el1_irq)
+	kernel_exit el=1, sync_stack_dabt=1
+SYM_CODE_END(ret_to_kernel_el1_irq)
 
 #ifdef CONFIG_DYNAMIC_STACK
 	/*
@@ -917,12 +958,12 @@ SYM_CODE_END(tramp_exit)
 	.macro generate_el1_vector, bhb
 .Lvector_start\@:
 	kernel_ventry_el1_sync	1, t, 64, sync	// Synchronous EL1t
-	kernel_ventry	1, t, 64, irq		// IRQ EL1t
+	kernel_ventry_el1_irq	t		// IRQ EL1t
 	kernel_ventry	1, t, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
 	kernel_ventry_el1_sync	1, h, 64, sync	// Synchronous EL1h
-	kernel_ventry	1, h, 64, irq		// IRQ EL1h
+	kernel_ventry_el1_irq	h		// IRQ EL1h
 	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
 

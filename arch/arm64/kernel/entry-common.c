@@ -153,7 +153,11 @@ static void do_interrupt_handler(struct pt_regs *regs,
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	if (on_thread_stack())
+	/*
+	 * EL1 IRQs will always be on the IRQ stack, EL0 IRQs need to switch.
+	 * If we are processing a softirq we are also already on the IRQ stack.
+	 */
+	if (!on_irq_stack(current_stack_pointer, 1))
 		call_on_irq_stack(regs, handler);
 	else
 		handler(regs);
