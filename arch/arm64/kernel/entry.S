@@ -100,6 +100,37 @@
 .org .Lventry_start\@ + 128	// Did we overflow the ventry slot?
 	.endm
 
+	/* Only used for EL1 irq/fiq exceptions */
+	.macro kernel_ventry_el1_irq, ht:req, label:req
+	.align 7
+.Lventry_el1_irq_start\@:
+	/* Immediately switch to the IRQ stack when handling EL1H IRQ exceptions */
+	// Save x0, x1 in tpidr_el0, tpidrro_el0 so we have two scratch
+	// registers to use.
+	msr	tpidr_el0, x0
+	msr	tpidrro_el0, x1
+	ldr_this_cpu x0, irq_stack_ptr, x1
+	mov	x1, sp		// Save old SP in x1
+	cmp	x1, x0
+	b.lo	.Lventry_el1_irq_switch\@ // SP (x1) < irq stack bottom (x0)
+	add	x0, x0, #IRQ_STACK_SIZE
+	cmp	x1, x0
+	// We are already on the IRQ stack, proceed
+	b.lo	.Lventry_el1_irq_already_irq_sp\@ // SP (x1) < irq stack top (x0)
+	sub	x0, x0, #IRQ_STACK_SIZE // Get back to the bottom of the stack
+.Lventry_el1_irq_switch\@:
+	add	sp, x0, #IRQ_STACK_SIZE // Move SP to top of IRQ stack
+.Lventry_el1_irq_already_irq_sp\@:
+	// Just go on and stash registers on the IRQ stack
+	sub	sp, sp, #PT_REGS_SIZE
+	str	x1, [sp, #S_IRQ_EL1_SP]
+	// Restore x0, x1 from tpidr_el0, tpidrro_el0
+	mrs	x0, tpidr_el0
+	mrs	x1, tpidrro_el0
+	b	el1\ht\()_64_\label
+.org .Lventry_el1_irq_start\@ + 128	// Did we overflow the ventry slot?
+	.endm
+
 	.macro	tramp_alias, dst, sym
 	.set	.Lalias\@, TRAMP_VALIAS + \sym - .entry.tramp.text
 	movz	\dst, :abs_g2_s:.Lalias\@
@@ -194,7 +225,7 @@ alternative_cb_end
 #endif
 	.endm
 
-	.macro	kernel_entry, el, regsize = 64
+	.macro	kernel_entry, el, regsize = 64, el1_irq = 0
 	.if	\el == 0
 	alternative_insn nop, SET_PSTATE_DIT(1), ARM64_HAS_DIT
 	.endif
@@ -286,7 +317,11 @@ alternative_else_nop_endif
 
 	scs_load_current
 	.else
+	.if \el1_irq == 1
+	ldr	x21, [sp, #S_IRQ_EL1_SP]
+	.else
 	add	x21, sp, #PT_REGS_SIZE
+	.endif
 	get_current_task tsk
 	.endif /* \el == 0 */
 	mrs	x22, elr_el1
@@ -343,7 +378,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, el1_irq=0
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -434,6 +469,9 @@ alternative_else_nop_endif
 	msr	tpidrro_el0, x0
 	.endif
 	ldp	x0, x1, [sp, #16 * 0]
+	.if	\el1_irq == 1
+	msr	tpidr_el0, x0 // Put a copy of x0 here
+	.endif
 	ldp	x2, x3, [sp, #16 * 1]
 	ldp	x4, x5, [sp, #16 * 2]
 	ldp	x6, x7, [sp, #16 * 3]
@@ -467,7 +505,13 @@ alternative_else_nop_endif
 	.endif
 
 	ldr	lr, [sp, #S_LR]
+	.if \el1_irq == 1
+	ldr	x0, [sp, #S_IRQ_EL1_SP]
+	mov	sp, x0
+	mrs	x0, tpidr_el0 // We have a copy of x0 here
+	.else
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
+	.endif
 
 	.if \el == 0
 	/* This must be after the last explicit memory access */
@@ -540,13 +584,13 @@ tsk	.req	x28		// current thread_info
 	.align	11
 SYM_CODE_START(vectors)
 	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
-	kernel_ventry	1, t, 64, irq		// IRQ EL1t
-	kernel_ventry	1, t, 64, fiq		// FIQ EL1t
+	kernel_ventry_el1_irq	t, irq		// IRQ EL1t
+	kernel_ventry_el1_irq	t, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
 	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
-	kernel_ventry	1, h, 64, irq		// IRQ EL1h
-	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
+	kernel_ventry_el1_irq	h, irq		// IRQ EL1h
+	kernel_ventry_el1_irq	h, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
 
 	kernel_ventry	0, t, 64, sync		// Synchronous 64-bit EL0
@@ -589,15 +633,20 @@ SYM_CODE_START_LOCAL(__bad_stack)
 SYM_CODE_END(__bad_stack)
 
 
-	.macro entry_handler el:req, ht:req, regsize:req, label:req
+	.macro entry_handler el:req, ht:req, regsize:req, el1_irq:req, label:req
 SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
-	kernel_entry \el, \regsize
+	kernel_entry \el, \regsize, \el1_irq
 	mov	x0, sp
 	bl	el\el\ht\()_\regsize\()_\label\()_handler
 	.if \el == 0
 	b	ret_to_user
+	.endif
+	.if \el1_irq == 1
+	b	ret_to_kernel_el1_irq
 	.else
+	.if \el != 0
 	b	ret_to_kernel
+	.endif
 	.endif
 SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
 	.endm
@@ -605,29 +654,33 @@ SYM_CODE_END(el\el\ht\()_\regsize\()_\label)
 /*
  * Early exception handlers
  */
-	entry_handler	1, t, 64, sync
-	entry_handler	1, t, 64, irq
-	entry_handler	1, t, 64, fiq
-	entry_handler	1, t, 64, error
+	entry_handler	1, t, 64, 0, sync
+	entry_handler	1, t, 64, 1, irq
+	entry_handler	1, t, 64, 1, fiq
+	entry_handler	1, t, 64, 0, error
 
-	entry_handler	1, h, 64, sync
-	entry_handler	1, h, 64, irq
-	entry_handler	1, h, 64, fiq
-	entry_handler	1, h, 64, error
+	entry_handler	1, h, 64, 0, sync
+	entry_handler	1, h, 64, 1, irq
+	entry_handler	1, h, 64, 1, fiq
+	entry_handler	1, h, 64, 0, error
 
-	entry_handler	0, t, 64, sync
-	entry_handler	0, t, 64, irq
-	entry_handler	0, t, 64, fiq
-	entry_handler	0, t, 64, error
+	entry_handler	0, t, 64, 0, sync
+	entry_handler	0, t, 64, 0, irq
+	entry_handler	0, t, 64, 0, fiq
+	entry_handler	0, t, 64, 0, error
 
-	entry_handler	0, t, 32, sync
-	entry_handler	0, t, 32, irq
-	entry_handler	0, t, 32, fiq
-	entry_handler	0, t, 32, error
+	entry_handler	0, t, 32, 0, sync
+	entry_handler	0, t, 32, 0, irq
+	entry_handler	0, t, 32, 0, fiq
+	entry_handler	0, t, 32, 0, error
 
 SYM_CODE_START_LOCAL(ret_to_kernel)
-	kernel_exit 1
+	kernel_exit el=1
 SYM_CODE_END(ret_to_kernel)
+
+SYM_CODE_START_LOCAL(ret_to_kernel_el1_irq)
+	kernel_exit el=1, el1_irq=1
+SYM_CODE_END(ret_to_kernel_el1_irq)
 
 SYM_CODE_START_LOCAL(ret_to_user)
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
@@ -635,7 +688,7 @@ SYM_CODE_START_LOCAL(ret_to_user)
 #ifdef CONFIG_KSTACK_ERASE
 	bl	stackleak_erase_on_task_stack
 #endif
-	kernel_exit 0
+	kernel_exit el=0
 SYM_CODE_END(ret_to_user)
 
 	.popsection				// .entry.text
@@ -804,13 +857,13 @@ SYM_CODE_END(tramp_exit)
 	.macro generate_el1_vector, bhb
 .Lvector_start\@:
 	kernel_ventry	1, t, 64, sync		// Synchronous EL1t
-	kernel_ventry	1, t, 64, irq		// IRQ EL1t
-	kernel_ventry	1, t, 64, fiq		// FIQ EL1h
+	kernel_ventry_el1_irq	t, irq		// IRQ EL1t
+	kernel_ventry_el1_irq	t, fiq		// FIQ EL1t
 	kernel_ventry	1, t, 64, error		// Error EL1t
 
 	kernel_ventry	1, h, 64, sync		// Synchronous EL1h
-	kernel_ventry	1, h, 64, irq		// IRQ EL1h
-	kernel_ventry	1, h, 64, fiq		// FIQ EL1h
+	kernel_ventry_el1_irq	h, irq		// IRQ EL1h
+	kernel_ventry_el1_irq	h, fiq		// FIQ EL1h
 	kernel_ventry	1, h, 64, error		// Error EL1h
 
 	.rept	4

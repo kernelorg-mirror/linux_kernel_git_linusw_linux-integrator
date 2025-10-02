@@ -70,7 +70,10 @@ static void ____do_softirq(struct pt_regs *regs)
 
 void do_softirq_own_stack(void)
 {
-	call_on_irq_stack(NULL, ____do_softirq);
+	if (on_thread_stack())
+		call_on_irq_stack(NULL, ____do_softirq);
+	else
+		__do_softirq();
 }
 #endif
 
