@@ -75,6 +75,11 @@ int main(void)
   DEFINE(S_PSTATE,		offsetof(struct pt_regs, pstate));
   DEFINE(S_SYSCALLNO,		offsetof(struct pt_regs, syscallno));
   DEFINE(S_TPIDR_EL0,		offsetof(struct pt_regs, tpidr_el0));
+  /*
+   * Reuse this offset for EL1->EL1 IRQs, as TPIDR_EL0 is only saved
+   * on EL0->EL1 transitions it is unused when transitioning EL1->EL1
+   */
+  DEFINE(S_IRQ_EL1_SP,		offsetof(struct pt_regs, tpidr_el0));
   DEFINE(S_TPIDRRO_EL0,		offsetof(struct pt_regs, tpidrro_el0));
   DEFINE(S_SDEI_TTBR1,		offsetof(struct pt_regs, sdei_ttbr1));
   DEFINE(S_PMR,			offsetof(struct pt_regs, pmr));
