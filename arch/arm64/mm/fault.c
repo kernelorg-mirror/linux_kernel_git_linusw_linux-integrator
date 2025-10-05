@@ -43,6 +43,7 @@
 #include <asm/system_misc.h>
 #include <asm/tlbflush.h>
 #include <asm/traps.h>
+#include <asm/stacktrace.h>
 
 struct fault_info {
 	int	(*fn)(unsigned long far, unsigned long esr,
@@ -299,10 +300,18 @@ static bool __kprobes is_spurious_el1_translation_fault(unsigned long addr,
 static void die_kernel_fault(const char *msg, unsigned long addr,
 			     unsigned long esr, struct pt_regs *regs)
 {
+	unsigned long stack = (unsigned long)current->stack;
+	unsigned long irq_stack = (unsigned long)raw_cpu_read(irq_stack_ptr);
 	bust_spinlocks(1);
 
+	tracing_off();
 	pr_alert("Unable to handle kernel %s at virtual address %016lx\n", msg,
 		 addr);
+
+	pr_alert("TASK STACK: 0x%08lx-0x%08lx\n",
+		 stack, stack + THREAD_SIZE - 1);
+	pr_alert("IRQ STACK: 0x%08lx-0x%08lx\n",
+		 irq_stack, irq_stack + IRQ_STACK_SIZE - 1);
 
 	kasan_non_canonical_hook(addr);
 
