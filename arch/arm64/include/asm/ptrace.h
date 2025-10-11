@@ -169,6 +169,8 @@ struct pt_regs {
 
 	u64 tpidr_el0;
 	u64 tpidrro_el0;
+	u64 irq_el1_sp;
+	u64 padding;
 	u64 sdei_ttbr1;
 	struct frame_record_meta stackframe;
 };
