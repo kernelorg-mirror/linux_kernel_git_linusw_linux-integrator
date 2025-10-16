@@ -153,10 +153,7 @@ static void do_interrupt_handler(struct pt_regs *regs,
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	if (on_thread_stack())
-		call_on_irq_stack(regs, handler);
-	else
-		handler(regs);
+	handler(regs);
 
 	set_irq_regs(old_regs);
 }
