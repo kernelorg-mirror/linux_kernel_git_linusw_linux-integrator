@@ -3,7 +3,7 @@
  * SPI driver for Micrel/Kendin KS8995M ethernet switch.
  *
  * Copyright (C) 2008 Gabor Juhos <juhosg at openwrt.org>
- * Copyright (C) 2025 Linus Walleij <linus.walleij@linaro.org>
+ * Copyright (C) 2025-2026 Linus Walleij <linusw@kernel.org>
  *
  * This file was based on: drivers/spi/at25.c
  *     Copyright (C) 2006 David Brownell
@@ -440,8 +440,93 @@ dsa_tag_protocol ks8995_get_tag_protocol(struct dsa_switch *ds,
 					 int port,
 					 enum dsa_tag_protocol mp)
 {
-	/* This switch actually uses the 6 byte KS8995 protocol */
-	return DSA_TAG_PROTO_NONE;
+	return DSA_TAG_PROTO_KS8995;
+}
+
+/* Only the KS8995 supports special (DSA) tagging with special bits
+ * set for the ingress and egress ports. The "special tag" register bit
+ * in the other versions is used for clock edge setting so make sure
+ * to only enable this on the KS8995.
+ */
+static int ks8995_special_tags_setup(struct ks8995_switch *ks)
+{
+	int ret;
+	u8 val;
+	int i;
+
+	ret = ks8995_read_reg(ks, KS8995_REG_GC9, &val);
+	if (ret) {
+		dev_err(ks->dev, "failed to read KS8995_REG_GC9\n");
+		return ret;
+	}
+
+	/* Enable the "special tag" (the DSA port tagging) */
+	val |= KS8995_GC9_SPECIAL;
+
+	ret = ks8995_write_reg(ks, KS8995_REG_GC9, val);
+	if (ret)
+		dev_err(ks->dev, "failed to set KS8995_REG_GC11\n");
+
+	ret = ks8995_read_reg(ks, KS8995_REG_PC(KS8995_CPU_PORT, KS8995_REG_PC0), &val);
+	if (ret) {
+		dev_err(ks->dev, "failed to read KS8995_REG_PC0 on CPU port\n");
+		return ret;
+	}
+
+	/* Enable egress VLAN tag insertion on the CPU port and disable ingress
+	 * tag removal.
+	 *
+	 * Since we currently do not support VLAN tagging proper, the effect is that
+	 * this will add the special KS8995 DSA tag (a modified 802.1Q VLAN tag)
+	 * to packets entering from the chip, indicating the source port.
+	 *
+	 * This needs to be revisisted when implementing proper VLAN support.
+	 */
+	val &= ~KS8995_PC0_TAG_REM;
+	val |= KS8995_PC0_TAG_INS;
+
+	ret = ks8995_write_reg(ks, KS8995_REG_PC(KS8995_CPU_PORT, KS8995_REG_PC0), val);
+	if (ret) {
+		dev_err(ks->dev, "failed to write KS8995_REG_PC0 on CPU port\n");
+		return ret;
+	}
+
+	for (i = 0; i < KS8995_CPU_PORT; i++) {
+		/* Enable VLAN tag removal and disable tag insertion on all the
+		 * LAN-facing ports: this will strip all VLAN tags from egress
+		 * packets from the user ports. This needs to be revisised when
+		 * we implement proper VLAN support.
+		 */
+		ret = ks8995_read_reg(ks, KS8995_REG_PC(i, KS8995_REG_PC0), &val);
+		if (ret) {
+			dev_err(ks->dev, "failed to read KS8995_REG_PC0 on port %d\n", i);
+			return ret;
+		}
+
+		val |= KS8995_PC0_TAG_REM;
+		val &= ~KS8995_PC0_TAG_INS;
+
+		ret = ks8995_write_reg(ks, KS8995_REG_PC(i, KS8995_REG_PC0), val);
+		if (ret) {
+			dev_err(ks->dev, "failed to write KS8995_REG_PC0 on port %d\n", i);
+			return ret;
+		}
+
+		/* Set the default port VLAN (PVID) to zero and set priority and CFI to zero */
+		val = 0;
+		ret = ks8995_write_reg(ks, KS8995_REG_PC(i, KS8995_REG_PC3), val);
+		if (ret) {
+			dev_err(ks->dev, "failed to write KS8995_REG_PC3 on port %d\n", i);
+			return ret;
+		}
+		ret = ks8995_write_reg(ks, KS8995_REG_PC(i, KS8995_REG_PC4), val);
+		if (ret) {
+			dev_err(ks->dev, "failed to write KS8995_REG_PC4 on port %d\n", i);
+			return ret;
+		}
+	}
+
+	return 0;
 }
 
 static int ks8995_setup(struct dsa_switch *ds)
@@ -484,7 +569,8 @@ static int ks8995_setup(struct dsa_switch *ds)
 		return ret;
 	}
 
-	return 0;
+	/* This switch uses the KS8995 protocol */
+	return ks8995_special_tags_setup(ks);
 }
 
 static int ks8995_port_enable(struct dsa_switch *ds, int port,
@@ -792,6 +878,8 @@ static const struct dsa_switch_ops ks8995_ds_ops = {
 	.port_change_mtu = ks8995_change_mtu,
 	.port_max_mtu = ks8995_get_max_mtu,
 	.phylink_get_caps = ks8995_phylink_get_caps,
+	.port_hsr_join = dsa_port_simple_hsr_join,
+	.port_hsr_leave = dsa_port_simple_hsr_leave,
 };
 
 /* ------------------------------------------------------------------------ */
