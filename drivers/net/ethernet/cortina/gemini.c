@@ -20,6 +20,7 @@
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-direct.h>
 #include <linux/cache.h>
 #include <linux/interrupt.h>
 #include <linux/reset.h>
@@ -41,7 +42,7 @@
 #include <linux/ip.h>
 #include <linux/ipv6.h>
 #include <net/gro.h>
-
+#include <asm/memory.h>
 #include "gemini.h"
 
 #define DRV_NAME		"gmac-gemini"
@@ -726,6 +727,8 @@ gmac_get_queue_page(struct gemini_ethernet *geth,
 {
 	struct gmac_queue_page *gpage;
 	dma_addr_t mapping;
+	phys_addr_t phys;
+	void *virt;
 	int i;
 
 	/* Only look for even pages */
@@ -742,6 +745,26 @@ gmac_get_queue_page(struct gemini_ethernet *geth,
 		if (gpage->mapping == mapping)
 			return gpage;
 	}
+
+	dev_err(geth->dev, "could not find page at %08x (%08x)\n",
+		(u32)mapping, (u32)addr);
+
+	for (i = 0; i < geth->num_freeq_pages; i++) {
+		gpage = &geth->freeq_pages[i];
+		if (i < 3 && i > geth->num_freeq_pages - 3)
+			dev_err(geth->dev, "actual page mapping %08x -> %08x\n",
+				(u32)gpage->mapping,
+				(u32)(gpage->mapping + PAGE_SIZE));
+		if (i == 3)
+			dev_err(geth->dev, "...\n");
+	}
+	phys = dma_to_phys(geth->dev, mapping);
+	virt = phys_to_virt(phys);
+	dev_err(geth->dev, "mapping %08x at phys %08x, virt %08x, pfn %08x\n",
+		(u32)mapping,
+		(u32)phys,
+		(u32)virt,
+		(u32)virt_to_pfn(virt));
 
 	return NULL;
 }
@@ -785,7 +808,7 @@ static void gmac_cleanup_rxq(struct net_device *netdev)
 		/* Freeq pointers are one page off */
 		gpage = gmac_get_queue_page(geth, port, mapping + PAGE_SIZE);
 		if (!gpage) {
-			dev_err(geth->dev, "could not find page\n");
+			// dev_err(geth->dev, "could not find page\n");
 			continue;
 		}
 		/* Release the RX queue reference to the page */
