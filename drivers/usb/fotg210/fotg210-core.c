@@ -19,6 +19,24 @@
 
 #include "fotg210.h"
 
+/* Misc Register 0x40 timings for 30 MHz speed, Low Speed, Full Speed and Low Speed */
+#define FOTG210_MISC			0x40
+#define FOTG210_MISC_EOF2_MASK		GENMASK(5,4)
+#define FOTG210_MISC_EOF2_2_20_40	(0 << 4) /* 2@HS, 20@FS, 40@LS */
+#define FOTG210_MISC_EOF2_4_40_80	(1 << 4) /* 4@HS, 40@FS, 80@LS */
+#define FOTG210_MISC_EOF2_8_80_160	(2 << 4) /* 8@HS, 80@FS, 160@LS */
+#define FOTG210_MISC_EOF2_16_160_320	(3 << 4) /* 16@HS, 160@FS, 320@LS */
+#define FOTG210_MISC_EOF1_MASK		GENMASK(3,2)
+#define FOTG210_MISC_EOF1_540_1600_3750	(0 << 2) /* 540@HS, 1600@FS, 3750@LS */
+#define FOTG210_MISC_EOF1_360_1400_3500	(1 << 2) /* 360@HS, 1400@FS, 3500@LS */
+#define FOTG210_MISC_EOF1_180_1200_3250	(2 << 2) /* 180@HS, 1200@FS, 3250@LS */
+#define FOTG210_MISC_EOF1_720_21000_4000 (3 << 2) /* 720@HS, 21000@FS, 4000@LS */
+#define FOTG210_MISC_AS_SLP_MASK	GENMASK(1,0)
+#define FOTG210_MISC_AS_SLP_5US		(0 << 0) /* 5us sleep timer */
+#define FOTG210_MISC_AS_SLP_10US	(1 << 0) /* 10us sleep timer */
+#define FOTG210_MISC_AS_SLP_15US	(2 << 0) /* 15us sleep timer */
+#define FOTG210_MISC_AS_SLP_20US	(3 << 0) /* 20us sleep timer */
+
 /* Role Register 0x80 */
 #define FOTG210_RR			0x80
 #define FOTG210_RR_ID			BIT(21) /* 1 = B-device, 0 = A-device */
@@ -88,6 +106,12 @@ static int fotg210_gemini_init(struct fotg210 *fotg, struct resource *res,
 		dev_err(dev, "failed to initialize Gemini PHY\n");
 		return ret;
 	}
+
+	/* Set up some default timings (called a bug in Gemini) */
+	val = readl(fotg->base + FOTG210_MISC);
+	val &= ~(FOTG210_MISC_EOF1_MASK | FOTG210_MISC_AS_SLP_MASK);
+	val |= (FOTG210_MISC_EOF1_720_21000_4000 | FOTG210_MISC_AS_SLP_10US);
+	writel(val, fotg->base + FOTG210_MISC);
 
 	dev_info(dev, "initialized Gemini PHY in %s mode\n",
 		 (mode == USB_DR_MODE_HOST) ? "host" : "gadget");
