@@ -5534,10 +5534,20 @@ static void fotg210_init(struct fotg210_hcd *fotg210)
 	iowrite32(GMIR_MDEV_INT | GMIR_MOTG_INT | GMIR_INT_POLARITY,
 			&fotg210->regs->gmir);
 
+	/* Power off device A: drop VBUS and BUS request */
 	value = ioread32(&fotg210->regs->otgcsr);
+	value |= OTGCSR_A_BUS_DROP;
+	iowrite32(value, &fotg210->regs->otgcsr);
+	value &= ~OTGCSR_A_BUS_REQ;
+	iowrite32(value, &fotg210->regs->otgcsr);
+	msleep(10);
+
+	/* Power it all back on */
 	value &= ~OTGCSR_A_BUS_DROP;
+	iowrite32(value, &fotg210->regs->otgcsr);
 	value |= OTGCSR_A_BUS_REQ;
 	iowrite32(value, &fotg210->regs->otgcsr);
+	msleep(10);
 }
 
 /*
