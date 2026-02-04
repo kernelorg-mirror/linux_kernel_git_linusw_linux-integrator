@@ -649,6 +649,14 @@ struct ehci_tt {
 
 /*-------------------------------------------------------------------------*/
 
+#ifdef CONFIG_USB_EHCI_ROOT_HUB_TT
+#define		ehci_is_TDI(e)			(ehci_to_hcd(e)->has_tt)
+#else
+#define		ehci_is_TDI(e)			(0)
+#endif
+
+/*-------------------------------------------------------------------------*/
+
 #ifdef CONFIG_PPC_83xx
 /* Some Freescale processors have an erratum in which the TT
  * port number in the queue head was 0..N-1 instead of 1..N.
