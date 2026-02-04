@@ -21,13 +21,22 @@
  * to add code to the following function, and call it as needed.
  */
 
+/*
+ * In a bunch of EHCI implementations with transaction translators,
+ * the port speed can be found in the reserved bits in position 26 and
+ * 27. Implementations with the HOSTPC register will have this in
+ * bits 25 and 26 of the HOSTPC registers.
+ */
+#define PORTSC_SPEED_BITS(a)	(((a) >> 26) & 3)
+#define HOSTPC_SPEED_BITS(a)	(((a) >> 25) & 3)
+
 /* Returns the speed of a device attached to a port on the root hub. */
-static unsigned int ehci_port_speed(struct ehci_hcd *ehci, unsigned int portsc)
+static unsigned int ehci_port_speed(struct ehci_hcd *ehci, unsigned int speed)
 {
-	if (!IS_ENABLED(CONFIG_USB_EHCI_ROOT_HUB_TT) || !ehci_to_hcd(ehci)->has_tt)
+	if (!IS_ENABLED(CONFIG_USB_EHCI_ROOT_HUB_TT) || !ehci_is_TDI(ehci))
 		return USB_PORT_STAT_HIGH_SPEED;
 
-	switch ((portsc >> (ehci->has_hostpc ? 25 : 26)) & 3) {
+	switch (speed) {
 	case 0:
 		return 0;
 	case 1:
@@ -310,8 +319,8 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 			 * sake, add a delay if we need one.
 			 */
 			if ((t2 & PORT_WKDISC_E) &&
-					ehci_port_speed(ehci, t2) ==
-						USB_PORT_STAT_HIGH_SPEED)
+			    ehci_port_speed(ehci, PORTSC_SPEED_BITS(t2)) ==
+					    USB_PORT_STAT_HIGH_SPEED)
 				fs_idle_delay = true;
 			ehci_writel(ehci, t2, reg);
 			changed = 1;
@@ -1009,9 +1018,9 @@ int ehci_hub_control(
 			// status may be from integrated TT
 			if (ehci->has_hostpc) {
 				temp1 = ehci_readl(ehci, hostpc_reg);
-				status |= ehci_port_speed(ehci, temp1);
+				status |= ehci_port_speed(ehci, HOSTPC_SPEED_BITS(temp1));
 			} else
-				status |= ehci_port_speed(ehci, temp);
+				status |= ehci_port_speed(ehci, PORTSC_SPEED_BITS(temp));
 		}
 		if (temp & PORT_PE)
 			status |= USB_PORT_STAT_ENABLE;
