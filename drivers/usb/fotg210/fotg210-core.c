@@ -37,10 +37,65 @@
 #define FOTG210_MISC_AS_SLP_15US	(2 << 0) /* 15us sleep timer */
 #define FOTG210_MISC_AS_SLP_20US	(3 << 0) /* 20us sleep timer */
 
-/* Role Register 0x80 */
-#define FOTG210_RR			0x80
-#define FOTG210_RR_ID			BIT(21) /* 1 = B-device, 0 = A-device */
-#define FOTG210_RR_CROLE		BIT(20) /* 1 = device, 0 = host */
+/*
+ * OTGCSR OTG Control/Status Register
+ *
+ * FIXME: implement core support in ehci.h and ehci-hub.c to deal with
+ * the speed detection like Moorestown does.
+ */
+#define FOTG210_OTGCSR			0x80
+#define FOTG210_OTGCSR_OTG_RESET	BIT(24)
+#define FOTG210_OTGCSR_HOST_SPD_TYP	(3 << 22)
+#define FOTG210_OTGCSR_ID		BIT(21)
+#define FOTG210_OTGCSR_CROLE		BIT(20)
+#define FOTG210_OTGCSR_A_VBUS_VLD	BIT(19)
+#define FOTG210_OTGCSR_A_SESS_VLD	BIT(18)
+#define FOTG210_OTGCSR_B_SESS_VLD	BIT(17)
+#define FOTG210_OTGCSR_B_SESS_END	BIT(16)
+#define FOTG210_OTGCSR_PHY_RESET	BIT(15)
+#define FOTG210_OTGCSR_A_SRP_RESP_TYPE	BIT(8) /* 0 = VBUS, 1 = DATA LINE */
+#define FOTG210_OTGCSR_A_SRP_DET_EN	BIT(7)
+#define FOTG210_OTGCSR_B_SET_HNP_EN	BIT(6)
+#define FOTG210_OTGCSR_A_BUS_DROP	BIT(5)
+#define FOTG210_OTGCSR_A_BUS_REQ	BIT(4)
+#define FOTG210_OTGCSR_B_DSCHG_VBUS	BIT(2)
+#define FOTG210_OTGCSR_B_HNP_EN		BIT(1)
+#define FOTG210_OTGCSR_B_BUS_REQ	BIT(0)
+
+/* OTGISR interrupt status register: offset 0x74, 0x84 in Faraday source code */
+#define FOTG210_OTGISR			0x84
+#define FOTG210_OTGISR_APLGRMV		BIT(12)
+#define FOTG210_OTGISR_BPLGRMV		BIT(11)
+#define FOTG210_OTGISR_OVC		BIT(10) /* Overcurrent indication  */
+#define FOTG210_OTGISR_IDCHG		BIT(9)
+#define FOTG210_OTGISR_RLCHG		BIT(8)
+#define FOTG210_OTGISR_AVBUSERR		BIT(5)
+#define FOTG210_OTGISR_ASRPDET		BIT(4)
+#define FOTG210_OTGISR_BSRPDN		BIT(0)
+
+/* OTGISR interrupt enable register: offset 0x88 in Faraday source code */
+#define FOTG210_OTGIEN			0x88 /* ? */
+#define FOTG210_OTGIEN_APLGRMV		BIT(12)
+#define FOTG210_OTGIEN_BPLGRMV		BIT(11)
+#define FOTG210_OTGIEN_OVC		BIT(10) /* Overcurrent indication  */
+#define FOTG210_OTGIEN_IDCHG		BIT(9)
+#define FOTG210_OTGIEN_RLCHG		BIT(8)
+#define FOTG210_OTGIEN_AVBUSERR		BIT(5)
+#define FOTG210_OTGIEN_ASRPDET		BIT(4)
+#define FOTG210_OTGIEN_BSRPDN		BIT(0)
+
+/* Global interrupt status */
+#define FOTG210_GINT			0xc0
+#define FOTG210_GINT_MHC_INT		BIT(2) /* Host interrupt */
+#define FOTG210_GINT_MOTG_INT		BIT(1) /* OTG interrupt */
+#define FOTG210_GINT_MDEV_INT		BIT(0) /* Peripheral interrupt */
+
+/* GMIR global mask interrupt enable register: offset 0xB4, 0xc4 in Faraday source code */
+#define FOTG210_GINTM			0xc4
+#define FOTG210_GINTM_INT_POLARITY	BIT(3) /* Active High*/
+#define FOTG210_GINTM_MHC_INT		BIT(2) /* Mask Host interrupt */
+#define FOTG210_GINTM_MOTG_INT		BIT(1) /* Mask OTG interrupt */
+#define FOTG210_GINTM_MDEV_INT		BIT(0) /* Mask peripheral interrupt */
 
 /*
  * Gemini-specific initialization function, only executed on the
@@ -93,9 +148,9 @@ static int fotg210_gemini_init(struct fotg210 *fotg, struct resource *res,
 		fotg->port = GEMINI_PORT_0;
 		mask = GEMINI_MISC_USB0_VBUS_ON | GEMINI_MISC_USB0_MINI_B |
 			GEMINI_MISC_USB0_WAKEUP;
-		if (mode == USB_DR_MODE_HOST)
+		if (mode == USB_DR_MODE_HOST) {
 			val = GEMINI_MISC_USB0_VBUS_ON;
-		else
+		} else
 			val = GEMINI_MISC_USB0_MINI_B;
 		if (wakeup)
 			val |= GEMINI_MISC_USB0_WAKEUP;
@@ -177,14 +232,34 @@ static int fotg210_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	val = readl(fotg->base + FOTG210_RR);
+	val = readl(fotg->base + FOTG210_OTGCSR);
 	if (mode == USB_DR_MODE_PERIPHERAL) {
-		if (!(val & FOTG210_RR_CROLE))
+		if (!(val & FOTG210_OTGCSR_CROLE))
 			dev_err(dev, "block not in device role\n");
 		ret = fotg210_udc_probe(pdev, fotg);
 	} else {
-		if (val & FOTG210_RR_CROLE)
+		if (val & FOTG210_OTGCSR_CROLE)
 			dev_err(dev, "block not in host role\n");
+
+		/* Mask off device and OTG interrupts, set polarity high */
+		writel(FOTG210_GINTM_MDEV_INT | FOTG210_GINTM_MOTG_INT | FOTG210_GINTM_INT_POLARITY,
+		       fotg->base + FOTG210_GINTM);
+
+		/* Power off device A: drop VBUS and BUS request */
+		val = readl(fotg->base + FOTG210_OTGCSR);
+		val |= FOTG210_OTGCSR_A_BUS_DROP;
+		writel(val, fotg->base + FOTG210_OTGCSR);
+		val &= ~FOTG210_OTGCSR_A_BUS_REQ;
+		writel(val, fotg->base + FOTG210_OTGCSR);
+		msleep(10);
+
+		/* Power it all back on */
+		val &= ~FOTG210_OTGCSR_A_BUS_DROP;
+		writel(val, fotg->base + FOTG210_OTGCSR);
+		val |= FOTG210_OTGCSR_A_BUS_REQ;
+		writel(val, fotg->base + FOTG210_OTGCSR);
+		msleep(10);
+
 		ret = fotg210_hcd_probe(pdev, fotg);
 	}
 
