@@ -720,6 +720,7 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 
 	status = 0;
 	current_status = ehci_readl(ehci, &ehci->regs->status);
+	ehci_info(ehci, "%s status 0x%08x\n", __func__, current_status);
 restart:
 
 	/* e.g. cardbus physical eject */
