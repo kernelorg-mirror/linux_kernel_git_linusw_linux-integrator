@@ -312,6 +312,21 @@ static const struct of_device_id ksz_dt_ids[] = {
 		.compatible = "microchip,lan9646",
 		.data = &ksz_switch_chips[LAN9646]
 	},
+	/*
+	 * Legacy Micrel bindings. In 2015 Microchip acquired
+	 * Micrel which is the originator of the KSZ series, and
+	 * devices branded for Micrel already existed, as well as
+	 * some device tree bindings. These two products are identical
+	 * to the same Microchip products.
+	 */
+	{
+		.compatible = "micrel,ksz8864",
+		.data = &ksz_switch_chips[KSZ8864]
+	},
+	{
+		.compatible = "micrel,ksz8795",
+		.data = &ksz_switch_chips[KSZ8795]
+	},
 	{},
 };
 MODULE_DEVICE_TABLE(of, ksz_dt_ids);
