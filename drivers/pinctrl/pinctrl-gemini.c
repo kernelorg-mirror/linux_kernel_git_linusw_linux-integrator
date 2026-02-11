@@ -2243,10 +2243,13 @@ static int gemini_pmx_set_mux(struct pinctrl_dev *pctldev,
 				"GLOBAL MISC CTRL before: %08x, after %08x, expected %08x\n",
 				before, after, expected);
 		} else {
-			dev_dbg(pmx->dev,
+			dev_info(pmx->dev,
 				"padgroup %s %s\n",
 				gemini_padgroups[i],
 				str_enabled_disabled(enabled));
+			dev_info(pmx->dev,
+				"GLOBAL MISC CTRL before: %08x, after %08x, expected %08x\n",
+				before, after, expected);
 		}
 	}
 
@@ -2265,10 +2268,13 @@ static int gemini_pmx_set_mux(struct pinctrl_dev *pctldev,
 				"GLOBAL MISC CTRL before: %08x, after %08x, expected %08x\n",
 				before, after, expected);
 		} else {
-			dev_dbg(pmx->dev,
+			dev_info(pmx->dev,
 				"padgroup %s %s\n",
 				gemini_padgroups[i],
 				str_enabled_disabled(enabled));
+			dev_info(pmx->dev,
+				 "GLOBAL MISC CTRL before: %08x, after %08x, expected %08x\n",
+				 before, after, expected);
 		}
 	}
 

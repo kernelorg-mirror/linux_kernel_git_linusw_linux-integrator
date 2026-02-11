@@ -64,7 +64,7 @@
 				ssp_default_pins: pinctrl-ssp {
 					mux {
 						function = "ssp";
-						group = "sspgrp";
+						groups = "sspgrp";
 					};
 				};
 				power_default_pins: pinctrl-power {

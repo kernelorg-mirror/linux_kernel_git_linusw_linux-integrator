@@ -7,6 +7,8 @@
 
 #include "gemini.dtsi"
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/pwm/pwm.h>
+#include <dt-bindings/thermal/thermal.h>
 
 / {
 	model = "Raidsonic NAS IB-4220-B";
@@ -72,6 +74,109 @@
 		phy0: ethernet-phy@1 {
 			reg = <1>;
 			device_type = "ethernet-phy";
+		};
+	};
+
+	fan0: pwm-fan {
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		/* Period "one millisecond" */
+		pwms = <&pwm0 0 10000000 0>;
+		cooling-levels = <0 16 32 48 64 80 96 112 127>;
+		status = "disabled";
+	};
+
+	thermal-zones {
+		chassis-thermal {
+			/* Poll every 20 seconds */
+			polling-delay = <20000>;
+			/* Poll every 2nd second when cooling */
+			polling-delay-passive = <2000>;
+			/*  Use the thermal sensor in the hard drive(s) */
+			thermal-sensors = <&drive0>, <&drive1>;
+
+			/* Tripping points from the fan.script in the rootfs */
+			trips {
+				alert0: chassis-alert-0 {
+					/* At 39 degrees turn on the fan */
+					temperature = <39000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert1: chassis-alert-1 {
+					/* Increase 2 degrees for each bump */
+					temperature = <41000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert2: chassis-alert-2 {
+					/* Increase 2 degrees for each bump */
+					temperature = <43000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert3: chassis-alert-3 {
+					/* Increase 2 degrees for each bump */
+					temperature = <45000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert4: chassis-alert-4 {
+					/* Increase 2 degrees for each bump */
+					temperature = <47000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert5: chassis-alert-5 {
+					/* Increase 2 degrees for each bump */
+					temperature = <49000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				alert6: chassis-alert-6 {
+					/* Increase 2 degrees for each bump */
+					temperature = <51000>;
+					hysteresis = <1000>;
+					type = "active";
+				};
+				crit: chassis-crit {
+					/* Just shut down at 60 degrees */
+					temperature = <60000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&alert0>;
+					cooling-device = <&fan0 0 1>;
+				};
+				map1 {
+					trip = <&alert1>;
+					cooling-device = <&fan0 1 2>;
+				};
+				map2 {
+					trip = <&alert2>;
+					cooling-device = <&fan0 2 3>;
+				};
+				map3 {
+					trip = <&alert3>;
+					cooling-device = <&fan0 3 4>;
+				};
+				map4 {
+					trip = <&alert4>;
+					cooling-device = <&fan0 4 5>;
+				};
+				map5 {
+					trip = <&alert5>;
+					cooling-device = <&fan0 5 6>;
+				};
+				map6 {
+					trip = <&alert6>;
+					cooling-device = <&fan0 7 8>;
+				};
+			};
 		};
 	};
 
@@ -153,6 +258,11 @@
 			status = "okay";
 		};
 
+		pwm0: spi@4a000000 {
+			status = "okay";
+			#pwm-cells = <3>;
+		};
+
 		gpio1: gpio@4e000000 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&gpio1_default_pins>;
@@ -172,10 +282,18 @@
 
 		ide@63000000 {
 			status = "okay";
+			drive0: ide-port@0 {
+				reg = <0>;
+				#thermal-sensor-cells = <0>;
+			};
 		};
 
 		ide@63400000 {
 			status = "okay";
+			drive1: ide-port@0 {
+				reg = <0>;
+				#thermal-sensor-cells = <0>;
+			};
 		};
 
 		usb@68000000 {

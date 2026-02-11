@@ -271,6 +271,16 @@ config PWM_FSL_FTM
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-fsl-ftm.
 
+config PWM_GEMINI_SSP
+	tristate "Gemini SSP PWM support"
+	depends on ARCH_GEMINI || COMPILE_TEST
+	depends on HAS_IOMEM && OF
+	help
+	  Generic PWM framework driver for Gemini SSP.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called pwm-gemini-ssp.
+
 config PWM_GPIO
 	tristate "GPIO PWM support"
 	depends on GPIOLIB
