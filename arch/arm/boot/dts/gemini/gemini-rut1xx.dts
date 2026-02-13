@@ -74,7 +74,42 @@
 			status = "okay";
 			/* 8MB of flash */
 			reg = <0x30000000 0x00800000>;
-			/* TODO: add flash partitions here */
+			/*
+			 * Override the RedBoot partition table with fixed partitions
+			 * in order to create a coherent "firmware" partition so that
+			 * we can have optimal flash usage with OpenWrt in a big
+			 * MTD-splitted "firmware" partition.
+			 */
+			partitions {
+				compatible = "fixed-partitions";
+				#address-cells = <1>;
+				#size-cells = <1>;
+				partition@0 {
+					label = "BOOT";
+					reg = <0x00000000 0x00020000>;
+					read-only;
+				};
+				partition@1 {
+					compatible = "openwrt,executable-prolog";
+					label = "firmware";
+					reg = <0x00020000 0x007a0000>;
+				};
+				partition@2 {
+					label = "VCTL";
+					reg = <0x007c0000 0x00010000>;
+					read-only;
+				};
+				partition@3 {
+					label = "cfg";
+					reg = <0x007d0000 0x00020000>;
+					read-only;
+				};
+				partition@4 {
+					label = "FIS directory";
+					reg = <0x007f0000 0x00010000>;
+					read-only;
+				};
+			};
 		};
 
 		syscon: syscon@40000000 {
