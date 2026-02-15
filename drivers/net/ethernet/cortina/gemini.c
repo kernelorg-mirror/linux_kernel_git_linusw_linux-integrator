@@ -66,10 +66,13 @@ MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
 #define HPROT_CACHABLE		BIT(3)
 
 #define DEFAULT_RX_COALESCE_NSECS	0
-#define DEFAULT_GMAC_RXQ_ORDER		9
-#define DEFAULT_GMAC_TXQ_ORDER		8
+#define DEFAULT_GMAC_RXQ_ORDER		5
+#define DEFAULT_GMAC_TXQ_ORDER		4
 #define DEFAULT_RX_BUF_ORDER		11
-#define TX_MAX_FRAGS			16
+#define TX_MAX_FRAGS			14
+#if TX_MAX_FRAGS <= PAGE_SHIFT
+#error "TX_MAX_FRAGS must be > PAGE_SHIFT"
+#endif
 #define TX_QUEUE_NUM			1	/* max: 6 */
 #define RX_MAX_ALLOC_ORDER		2
 
@@ -213,9 +216,7 @@ static const char gmac_stats_strings[GMAC_STATS_NUM][ETH_GSTRING_LEN] = {
 	"TX_FRAGS[11]",
 	"TX_FRAGS[12]",
 	"TX_FRAGS[13]",
-	"TX_FRAGS[14]",
-	"TX_FRAGS[15]",
-	"TX_FRAGS[16+]",
+	"TX_FRAGS[14+]",
 	"TX_FRAGS_LINEARIZED",
 	"TX_HW_CSUMMED",
 };
@@ -928,6 +929,11 @@ static int geth_setup_freeq(struct gemini_ethernet *geth)
 	union dma_skb_size skbsz;
 	unsigned int filled;
 	unsigned int pn;
+
+	dev_info(geth->dev, "fpp_order fragments per page order %08x (should be 1)\n", fpp_order);
+	dev_info(geth->dev, "frag_len (freeq frag len) %08x\n", frag_len);
+	dev_info(geth->dev, "len (freeq len) %08x\n", len);
+	dev_info(geth->dev, "pages %08x\n", pages);
 
 	geth->freeq_ring = dma_alloc_coherent(geth->dev,
 		sizeof(*geth->freeq_ring) << geth->freeq_order,
