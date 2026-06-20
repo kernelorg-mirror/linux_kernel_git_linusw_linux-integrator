@@ -46,8 +46,13 @@ struct svc_pt_regs {
 #define processor_mode(regs) \
 	((regs)->ARM_cpsr & MODE_MASK)
 
+static inline bool regs_irqs_disabled(const struct pt_regs *regs)
+{
+	return regs->ARM_cpsr & PSR_I_BIT;
+}
+
 #define interrupts_enabled(regs) \
-	(!((regs)->ARM_cpsr & PSR_I_BIT))
+	(!regs_irqs_disabled(regs))
 
 #define fast_interrupts_enabled(regs) \
 	(!((regs)->ARM_cpsr & PSR_F_BIT))

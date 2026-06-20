@@ -87,6 +87,10 @@ ENDPROC(__irq_entry)
 __pendsv_entry:
 	v7m_exception_entry
 
+#ifdef CONFIG_RSEQ
+	bl	arm_rseq_user_enter
+#endif
+
 	ldr	r1, =BASEADDR_V7M_SCB
 	mov	r0, #V7M_SCB_ICSR_PENDSVCLR
 	str	r0, [r1, V7M_SCB_ICSR]	@ clear PendSV
@@ -94,7 +98,7 @@ __pendsv_entry:
 	@ execute the pending work, including reschedule
 	get_thread_info tsk
 	mov	why, #0
-	b	ret_to_user_from_irq
+	b	v7m_ret_to_user_from_irq
 ENDPROC(__pendsv_entry)
 
 /*

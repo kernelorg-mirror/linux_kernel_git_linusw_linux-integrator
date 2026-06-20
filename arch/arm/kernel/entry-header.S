@@ -199,7 +199,11 @@
 	.endm
 
 
-	.macro	svc_exit, rpsr, irq = 0
+	.macro	svc_exit, rpsr, irq = 0, irqentry = 0
+	.if	\irqentry != 0
+	@ Generic IRQ entry already handled tracing and lockdep state.
+	disable_irq_notrace
+	.else
 	.if	\irq != 0
 	@ IRQs already off
 #ifdef CONFIG_TRACE_IRQFLAGS
@@ -216,6 +220,7 @@
 	tst	\rpsr, #PSR_I_BIT
 	blne	trace_hardirqs_off
 #endif
+	.endif
 	.endif
 	uaccess_exit tsk, r0, r1
 
