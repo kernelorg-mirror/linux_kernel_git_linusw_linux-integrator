@@ -110,7 +110,8 @@ ret_slow_syscall:
 	bl	do_rseq_syscall
 #endif
 	disable_irq_notrace			@ disable interrupts
-ENTRY(ret_to_user_from_irq)
+ENTRY(v7m_ret_to_user_from_irq)
+	/* Only the v7m jumps directly to v7m_ret_to_user_from_irq */
 	ldr	r1, [tsk, #TI_FLAGS]
 	movs	r1, r1, lsl #16
 	bne	slow_work_pending
@@ -123,7 +124,7 @@ no_work_pending:
 	bl	stackleak_erase_on_task_stack
 #endif
 	restore_user_regs fast = 0, offset = 0
-ENDPROC(ret_to_user_from_irq)
+ENDPROC(v7m_ret_to_user_from_irq)
 ENDPROC(ret_to_user)
 
 /*

@@ -12,6 +12,7 @@
 #include <linux/resume_user_mode.h>
 #include <linux/uprobes.h>
 #include <linux/syscalls.h>
+#include <linux/irq-entry-common.h>
 
 #include <asm/elf.h>
 #include <asm/cacheflush.h>
@@ -597,6 +598,11 @@ static int do_signal(struct pt_regs *regs, int syscall)
 		}
 	}
 	return 0;
+}
+
+void arch_do_signal_or_restart(struct pt_regs *regs)
+{
+	do_signal(regs, 0);
 }
 
 asmlinkage int
