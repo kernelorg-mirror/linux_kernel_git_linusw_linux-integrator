@@ -14,6 +14,18 @@ __XScale_start:
 
 		@ Preserve r8/r7 i.e. kernel entry values
 
+		@ set correct endianness for ixp4xx regardless of bootloader
+		mrc p15, 0, r0, c1, c0, 0
+#ifdef CONFIG_CPU_BIG_ENDIAN
+		orr	r0, r0, #(1 << 7)       @ enable big endian mode
+#else
+		bic	r0, r0, #0x80
+#endif
+		mcr	p15, 0, r0, c1, c0, 0
+		mrc     p15, 0, r0, c2, c0, 0
+		mov	r0, r0
+		sub	pc, pc, #4		@ flush instruction pipeline
+
 		@ Data cache might be active.
 		@ Be sure to flush kernel binary out of the cache,
 		@ whatever state it is, before it is turned off.
