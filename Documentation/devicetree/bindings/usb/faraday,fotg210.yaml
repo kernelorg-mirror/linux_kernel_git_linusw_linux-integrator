@@ -13,6 +13,15 @@ maintainers:
 allOf:
   - $ref: usb-drd.yaml#
   - $ref: usb-hcd.yaml#
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: cortina,gemini-usb
+    then:
+      required:
+        - resets
+        - syscon
 
 properties:
   compatible:
@@ -44,13 +53,19 @@ properties:
     description: a phandle to the global Gemini system controller on
       Gemini systems
 
-  dr_mode: true
+  dr_mode:
+    enum: [host, peripheral]
 
   phys:
     maxItems: 1
 
   phy-names:
     const: usb2-phy
+
+  usb-phy:
+    maxItems: 1
+
+  wakeup-source: true
 
 required:
   - compatible
