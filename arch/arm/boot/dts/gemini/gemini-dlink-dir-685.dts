@@ -483,10 +483,12 @@
 
 		usb@68000000 {
 			status = "okay";
+			dr_mode = "host";
 		};
 
 		usb@69000000 {
 			status = "okay";
+			dr_mode = "host";
 		};
 	};
 };
