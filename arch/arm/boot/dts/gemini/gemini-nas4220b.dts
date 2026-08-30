@@ -180,10 +180,12 @@
 		};
 
 		usb@68000000 {
+			dr_mode = "host";
 			status = "okay";
 		};
 
 		usb@69000000 {
+			dr_mode = "host";
 			status = "okay";
 		};
 	};
