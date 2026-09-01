@@ -234,11 +234,11 @@ int ixp46x_ptp_find(struct ixp46x_ts_regs *__iomem *regs, int *phc_index)
 	if (!cpu_is_ixp46x())
 		return -ENODEV;
 
-	*regs = ixp_clock.regs;
-	*phc_index = ptp_clock_index(ixp_clock.ptp_clock);
-
 	if (!ixp_clock.ptp_clock)
 		return -EPROBE_DEFER;
+
+	*regs = ixp_clock.regs;
+	*phc_index = ptp_clock_index(ixp_clock.ptp_clock);
 
 	return 0;
 }
@@ -249,36 +249,42 @@ static void ptp_ixp_unregister_action(void *d)
 {
 	struct ptp_clock *ptp_clock = d;
 
-	ptp_clock_unregister(ptp_clock);
 	ixp_clock.ptp_clock = NULL;
+	ptp_clock_unregister(ptp_clock);
 }
 
 static int ptp_ixp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct ptp_clock *ptp_clock;
 	int ret;
 
 	ixp_clock.regs = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(ixp_clock.regs))
+		return dev_err_probe(dev, PTR_ERR(ixp_clock.regs),
+				     "failed to map registers\n");
+
 	ixp_clock.master_irq = platform_get_irq(pdev, 0);
+	if (ixp_clock.master_irq < 0)
+		return ixp_clock.master_irq;
+
 	ixp_clock.slave_irq = platform_get_irq(pdev, 1);
-	if (IS_ERR(ixp_clock.regs) ||
-	    ixp_clock.master_irq < 0 || ixp_clock.slave_irq < 0)
-		return -ENXIO;
+	if (ixp_clock.slave_irq < 0)
+		return ixp_clock.slave_irq;
 
 	ixp_clock.caps = ptp_ixp_caps;
 
-	ixp_clock.ptp_clock = ptp_clock_register(&ixp_clock.caps, NULL);
-
-	if (IS_ERR(ixp_clock.ptp_clock))
-		return PTR_ERR(ixp_clock.ptp_clock);
+	ptp_clock = ptp_clock_register(&ixp_clock.caps, dev);
+	if (IS_ERR(ptp_clock))
+		return dev_err_probe(dev, PTR_ERR(ptp_clock),
+				     "failed to register clock\n");
 
 	ret = devm_add_action_or_reset(dev, ptp_ixp_unregister_action,
-				       ixp_clock.ptp_clock);
+				       ptp_clock);
 	if (ret) {
 		dev_err(dev, "failed to install clock removal handler\n");
 		return ret;
 	}
-
 	__raw_writel(DEFAULT_ADDEND, &ixp_clock.regs->addend);
 	__raw_writel(1, &ixp_clock.regs->trgt_lo);
 	__raw_writel(0, &ixp_clock.regs->trgt_hi);
@@ -297,6 +303,8 @@ static int ptp_ixp_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, ret,
 				     "request_irq failed for irq %d\n",
 				     ixp_clock.slave_irq);
+
+	ixp_clock.ptp_clock = ptp_clock;
 
 	return 0;
 }
