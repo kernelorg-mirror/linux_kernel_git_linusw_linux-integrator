@@ -33,6 +33,7 @@ properties:
       - items:
           - description: phandle to the RX queue node
           - description: RX queue instance to use
+            maximum: 31
     description: phandle to the RX queue on the NPE
 
   queue-txready:
@@ -41,6 +42,7 @@ properties:
       - items:
           - description: phandle to the TX READY queue node
           - description: TX READY queue instance to use
+            maximum: 63
     description: phandle to the TX READY queue on the NPE
 
   phy-mode: true
@@ -55,6 +57,7 @@ properties:
       - items:
           - description: phandle to the NPE this ethernet instance is using
           - description: the NPE instance to use
+            maximum: 2
     description: phandle to the NPE this ethernet instance is using
       and the instance to use in the second cell
 
