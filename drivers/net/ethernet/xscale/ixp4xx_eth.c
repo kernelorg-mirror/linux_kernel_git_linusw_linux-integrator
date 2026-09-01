@@ -959,21 +959,25 @@ static void eth_set_mcast_list(struct net_device *dev)
 	struct netdev_hw_addr *ha;
 	u8 diffs[ETH_ALEN], *addr;
 	int i;
-	static const u8 allmulti[] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	static const u8 mcast_bit[] = { 0x01, 0x00, 0x00,
+					0x00, 0x00, 0x00 };
 
-	if ((dev->flags & IFF_ALLMULTI) && !(dev->flags & IFF_PROMISC)) {
-		for (i = 0; i < ETH_ALEN; i++) {
-			__raw_writel(allmulti[i], &port->regs->mcast_addr[i]);
-			__raw_writel(allmulti[i], &port->regs->mcast_mask[i]);
-		}
-		__raw_writel(DEFAULT_RX_CNTRL0 | RX_CNTRL0_ADDR_FLTR_EN,
-			&port->regs->rx_control[0]);
+	if (dev->flags & IFF_PROMISC) {
+		__raw_writel(DEFAULT_RX_CNTRL0 & ~RX_CNTRL0_ADDR_FLTR_EN,
+			     &port->regs->rx_control[0]);
 		return;
 	}
 
-	if ((dev->flags & IFF_PROMISC) || netdev_mc_empty(dev)) {
-		__raw_writel(DEFAULT_RX_CNTRL0 & ~RX_CNTRL0_ADDR_FLTR_EN,
-			     &port->regs->rx_control[0]);
+	if ((dev->flags & IFF_ALLMULTI) || netdev_mc_empty(dev)) {
+		/* Match or reject every address with the multicast bit set. */
+		for (i = 0; i < ETH_ALEN; i++) {
+			__raw_writel((dev->flags & IFF_ALLMULTI) ?
+				     mcast_bit[i] : 0,
+				     &port->regs->mcast_addr[i]);
+			__raw_writel(mcast_bit[i], &port->regs->mcast_mask[i]);
+		}
+		__raw_writel(DEFAULT_RX_CNTRL0 | RX_CNTRL0_ADDR_FLTR_EN,
+			&port->regs->rx_control[0]);
 		return;
 	}
 
