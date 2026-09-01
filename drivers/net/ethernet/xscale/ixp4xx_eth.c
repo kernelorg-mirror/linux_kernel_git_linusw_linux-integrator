@@ -72,8 +72,9 @@
  * FIXME: we have chosen the safe default (14320) but if you can test
  * jumboframes, experiment with 16320 and see what happens!
  */
-#define MAX_MRU			(14320 - VLAN_ETH_HLEN)
-#define RX_BUFF_SIZE		ALIGN((NET_IP_ALIGN) + MAX_MRU, 4)
+#define MAX_FRAME_SIZE		14320
+#define MAX_MTU			(MAX_FRAME_SIZE - VLAN_ETH_HLEN)
+#define RX_BUFF_SIZE		ALIGN(NET_IP_ALIGN + MAX_FRAME_SIZE, 4)
 
 #define NAPI_WEIGHT		16
 #define MDIO_INTERVAL		(3 * HZ)
@@ -761,7 +762,7 @@ static int eth_poll(struct napi_struct *napi, int budget)
 		if (!skb) {
 			dev->stats.rx_dropped++;
 			/* put the desc back on RX-ready queue */
-			desc->buf_len = MAX_MRU;
+			desc->buf_len = MAX_FRAME_SIZE;
 			desc->pkt_len = 0;
 			queue_put_desc(rxfreeq, rx_desc_phys(port, n), desc);
 			continue;
@@ -795,7 +796,7 @@ static int eth_poll(struct napi_struct *napi, int budget)
 		port->rx_buff_tab[n] = temp;
 		desc->data = phys + NET_IP_ALIGN;
 #endif
-		desc->buf_len = MAX_MRU;
+		desc->buf_len = MAX_FRAME_SIZE;
 		desc->pkt_len = 0;
 		queue_put_desc(rxfreeq, rx_desc_phys(port, n), desc);
 		received++;
@@ -869,7 +870,7 @@ static netdev_tx_t eth_xmit(struct sk_buff *skb, struct net_device *dev)
 	netdev_debug(dev, "eth_xmit\n");
 #endif
 
-	if (unlikely(skb->len > MAX_MRU)) {
+	if (unlikely(skb->len > MAX_FRAME_SIZE)) {
 		dev_kfree_skb(skb);
 		dev->stats.tx_errors++;
 		return NETDEV_TX_OK;
@@ -1133,7 +1134,7 @@ static int init_queues(struct port *port)
 			return -ENOMEM;
 		data = buff;
 #endif
-		desc->buf_len = MAX_MRU;
+		desc->buf_len = MAX_FRAME_SIZE;
 		desc->data = dma_map_single(&port->netdev->dev, data,
 					    RX_BUFF_SIZE, DMA_FROM_DEVICE);
 		if (dma_mapping_error(&port->netdev->dev, desc->data)) {
@@ -1196,8 +1197,8 @@ static int ixp4xx_do_change_mtu(struct net_device *dev, int new_mtu)
 	msg.eth_id = port->id;
 
 	/* Firmware wants to know buffer size in 64 byte chunks */
-	msg.byte2 = chunks << 8;
-	msg.byte3 = chunks << 8;
+	msg.byte2 = chunks;
+	msg.byte3 = chunks;
 
 	msg.byte4 = msg.byte6 = framesize >> 8;
 	msg.byte5 = msg.byte7 = framesize & 0xff;
@@ -1278,7 +1279,9 @@ static int eth_open(struct net_device *dev)
 	if (npe_send_recv_message(port->npe, &msg, "ETH_SET_FIREWALL_MODE"))
 		return -EIO;
 
-	ixp4xx_do_change_mtu(dev, dev->mtu);
+	err = ixp4xx_do_change_mtu(dev, dev->mtu);
+	if (err)
+		return err;
 
 	if ((err = request_queues(port)) != 0)
 		return err;
@@ -1540,7 +1543,7 @@ static int ixp4xx_eth_probe(struct platform_device *pdev)
 	ndev->dev.coherent_dma_mask = dev->coherent_dma_mask;
 
 	ndev->min_mtu = ETH_MIN_MTU;
-	ndev->max_mtu = MAX_MRU;
+	ndev->max_mtu = MAX_MTU;
 
 	netif_napi_add_weight(ndev, &port->napi, eth_poll, NAPI_WEIGHT);
 
