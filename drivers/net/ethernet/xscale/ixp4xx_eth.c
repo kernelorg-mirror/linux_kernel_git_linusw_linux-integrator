@@ -168,7 +168,6 @@ struct eth_plat_info {
 	u8 txreadyq;
 	u8 hwaddr[ETH_ALEN];
 	u8 npe;		/* NPE instance used by this interface */
-	bool has_mdio;	/* If this instance has an MDIO bus */
 };
 
 struct eth_regs {
@@ -190,6 +189,10 @@ struct eth_regs {
 	u32 core_control;			/* 1FC */
 };
 
+struct ixp4xx_mdio {
+	struct eth_regs __iomem *regs;
+};
+
 struct port {
 	struct eth_regs __iomem *regs;
 	struct ixp46x_ts_regs __iomem *timesync_regs;
@@ -199,6 +202,7 @@ struct port {
 	struct napi_struct napi;
 	struct eth_plat_info *plat;
 	buffer_t *rx_buff_tab[RX_DESCS], *tx_buff_tab[TX_DESCS];
+	struct dma_pool *dma_pool;
 	struct desc *desc_tab;	/* coherent */
 	dma_addr_t desc_tab_phys;
 	void *tx_drain_buf;
@@ -277,12 +281,9 @@ static inline void memcpy_swab32(u32 *dest, u32 *src, int cnt)
 #endif
 
 static DEFINE_SPINLOCK(mdio_lock);
-static struct eth_regs __iomem *mdio_regs; /* mdio command and status only */
 static struct mii_bus *mdio_bus;
-static struct device_node *mdio_bus_np;
 static int ports_open;
 static struct port *npe_port_tab[MAX_NPES];
-static struct dma_pool *dma_pool;
 
 static int ixp_ptp_match(struct sk_buff *skb, u16 uid_hi, u32 uid_lo, u16 seqid)
 {
@@ -479,24 +480,26 @@ static int ixp4xx_hwtstamp_get(struct net_device *netdev,
 static int ixp4xx_mdio_cmd(struct mii_bus *bus, int phy_id, int location,
 			   int write, u16 cmd)
 {
+	struct ixp4xx_mdio *priv = bus->priv;
+	struct eth_regs __iomem *regs = priv->regs;
 	int cycles = 0;
 
-	if (__raw_readl(&mdio_regs->mdio_command[3]) & 0x80) {
+	if (__raw_readl(&regs->mdio_command[3]) & 0x80) {
 		printk(KERN_ERR "%s: MII not ready to transmit\n", bus->name);
 		return -1;
 	}
 
 	if (write) {
-		__raw_writel(cmd & 0xFF, &mdio_regs->mdio_command[0]);
-		__raw_writel(cmd >> 8, &mdio_regs->mdio_command[1]);
+		__raw_writel(cmd & 0xFF, &regs->mdio_command[0]);
+		__raw_writel(cmd >> 8, &regs->mdio_command[1]);
 	}
 	__raw_writel(((phy_id << 5) | location) & 0xFF,
-		     &mdio_regs->mdio_command[2]);
+		     &regs->mdio_command[2]);
 	__raw_writel((phy_id >> 3) | (write << 2) | 0x80 /* GO */,
-		     &mdio_regs->mdio_command[3]);
+		     &regs->mdio_command[3]);
 
 	while ((cycles < MAX_MDIO_RETRIES) &&
-	       (__raw_readl(&mdio_regs->mdio_command[3]) & 0x80)) {
+	       (__raw_readl(&regs->mdio_command[3]) & 0x80)) {
 		udelay(1);
 		cycles++;
 	}
@@ -515,7 +518,7 @@ static int ixp4xx_mdio_cmd(struct mii_bus *bus, int phy_id, int location,
 	if (write)
 		return 0;
 
-	if (__raw_readl(&mdio_regs->mdio_status[3]) & 0x80) {
+	if (__raw_readl(&regs->mdio_status[3]) & 0x80) {
 #if DEBUG_MDIO
 		printk(KERN_DEBUG "%s #%i: MII read failed\n", bus->name,
 		       phy_id);
@@ -523,8 +526,8 @@ static int ixp4xx_mdio_cmd(struct mii_bus *bus, int phy_id, int location,
 		return 0xFFFF; /* don't return error */
 	}
 
-	return (__raw_readl(&mdio_regs->mdio_status[0]) & 0xFF) |
-		((__raw_readl(&mdio_regs->mdio_status[1]) & 0xFF) << 8);
+	return (__raw_readl(&regs->mdio_status[0]) & 0xFF) |
+		((__raw_readl(&regs->mdio_status[1]) & 0xFF) << 8);
 }
 
 static int ixp4xx_mdio_read(struct mii_bus *bus, int phy_id, int location)
@@ -558,30 +561,42 @@ static int ixp4xx_mdio_write(struct mii_bus *bus, int phy_id, int location,
 	return ret;
 }
 
-static int ixp4xx_mdio_register(struct eth_regs __iomem *regs)
+static void ixp4xx_mdio_clear(void *data)
 {
-	int err;
-
-	if (!(mdio_bus = mdiobus_alloc()))
-		return -ENOMEM;
-
-	mdio_regs = regs;
-	__raw_writel(DEFAULT_CORE_CNTRL, &mdio_regs->core_control);
-	mdio_bus->name = "IXP4xx MII Bus";
-	mdio_bus->read = &ixp4xx_mdio_read;
-	mdio_bus->write = &ixp4xx_mdio_write;
-	snprintf(mdio_bus->id, MII_BUS_ID_SIZE, "ixp4xx-eth-0");
-
-	err = of_mdiobus_register(mdio_bus, mdio_bus_np);
-	if (err)
-		mdiobus_free(mdio_bus);
-	return err;
+	if (mdio_bus == data)
+		mdio_bus = NULL;
 }
 
-static void ixp4xx_mdio_remove(void)
+static int ixp4xx_mdio_register(struct device *dev,
+				struct eth_regs __iomem *regs,
+				struct device_node *np)
 {
-	mdiobus_unregister(mdio_bus);
-	mdiobus_free(mdio_bus);
+	struct ixp4xx_mdio *priv;
+	struct mii_bus *bus;
+	int err;
+
+	if (mdio_bus)
+		return -EBUSY;
+
+	bus = devm_mdiobus_alloc_size(dev, sizeof(*priv));
+	if (!bus)
+		return -ENOMEM;
+	priv = bus->priv;
+	priv->regs = regs;
+
+	__raw_writel(DEFAULT_CORE_CNTRL, &regs->core_control);
+	bus->name = "IXP4xx MII Bus";
+	bus->read = ixp4xx_mdio_read;
+	bus->write = ixp4xx_mdio_write;
+	bus->parent = dev;
+	snprintf(bus->id, MII_BUS_ID_SIZE, "ixp4xx-eth-0");
+
+	err = devm_of_mdiobus_register(dev, bus, np);
+	if (err)
+		return err;
+
+	mdio_bus = bus;
+	return devm_add_action_or_reset(dev, ixp4xx_mdio_clear, bus);
 }
 
 
@@ -1115,14 +1130,13 @@ static int init_queues(struct port *port)
 {
 	int i;
 
-	if (!ports_open) {
-		dma_pool = dma_pool_create(DRV_NAME, &port->netdev->dev,
-					   POOL_ALLOC_SIZE, 32, 0);
-		if (!dma_pool)
-			return -ENOMEM;
-	}
+	port->dma_pool = dma_pool_create(DRV_NAME, &port->netdev->dev,
+					 POOL_ALLOC_SIZE, 32, 0);
+	if (!port->dma_pool)
+		return -ENOMEM;
 
-	port->desc_tab = dma_pool_zalloc(dma_pool, GFP_KERNEL, &port->desc_tab_phys);
+	port->desc_tab = dma_pool_zalloc(port->dma_pool, GFP_KERNEL,
+					 &port->desc_tab_phys);
 	if (!port->desc_tab)
 		return -ENOMEM;
 	memset(port->rx_buff_tab, 0, sizeof(port->rx_buff_tab)); /* tables */
@@ -1186,7 +1200,8 @@ static void destroy_queues(struct port *port)
 				free_buffer(buff);
 			}
 		}
-		dma_pool_free(dma_pool, port->desc_tab, port->desc_tab_phys);
+		dma_pool_free(port->dma_pool, port->desc_tab,
+			      port->desc_tab_phys);
 		port->desc_tab = NULL;
 	}
 	if (port->tx_drain_buf) {
@@ -1196,10 +1211,8 @@ static void destroy_queues(struct port *port)
 		port->tx_drain_buf = NULL;
 	}
 
-	if (!ports_open && dma_pool) {
-		dma_pool_destroy(dma_pool);
-		dma_pool = NULL;
-	}
+	dma_pool_destroy(port->dma_pool);
+	port->dma_pool = NULL;
 }
 
 static int ixp4xx_do_change_mtu(struct net_device *dev, int new_mtu)
@@ -1462,7 +1475,6 @@ static struct eth_plat_info *ixp4xx_of_get_platdata(struct device *dev)
 	struct device_node *np = dev->of_node;
 	struct of_phandle_args queue_spec;
 	struct of_phandle_args npe_spec;
-	struct device_node *mdio_np;
 	struct eth_plat_info *plat;
 	u8 mac[ETH_ALEN];
 	int ret;
@@ -1479,14 +1491,6 @@ static struct eth_plat_info *ixp4xx_of_get_platdata(struct device *dev)
 	}
 	/* NPE ID 0x00, 0x10, 0x20... */
 	plat->npe = (npe_spec.args[0] << 4);
-
-	/* Check if this device has an MDIO bus */
-	mdio_np = of_get_child_by_name(np, "mdio");
-	if (mdio_np) {
-		plat->has_mdio = true;
-		mdio_bus_np = mdio_np;
-		/* DO NOT put the mdio_np, it will be used */
-	}
 
 	/* Get the rx queue as a resource from queue manager */
 	ret = of_parse_phandle_with_fixed_args(np, "queue-rx", 1, 0,
@@ -1520,6 +1524,7 @@ static int ixp4xx_eth_probe(struct platform_device *pdev)
 	struct phy_device *phydev = NULL;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
+	struct device_node *mdio_np;
 	struct eth_plat_info *plat;
 	struct net_device *ndev;
 	struct port *port;
@@ -1543,9 +1548,11 @@ static int ixp4xx_eth_probe(struct platform_device *pdev)
 	if (IS_ERR(port->regs))
 		return PTR_ERR(port->regs);
 
-	/* Register the MDIO bus if we have it */
-	if (plat->has_mdio) {
-		err = ixp4xx_mdio_register(port->regs);
+	/* Register the MDIO bus if this port provides it */
+	mdio_np = of_get_child_by_name(np, "mdio");
+	if (mdio_np) {
+		err = ixp4xx_mdio_register(dev, port->regs, mdio_np);
+		of_node_put(mdio_np);
 		if (err) {
 			dev_err(dev, "failed to register MDIO bus\n");
 			return err;
@@ -1620,7 +1627,6 @@ static void ixp4xx_eth_remove(struct platform_device *pdev)
 
 	unregister_netdev(ndev);
 	phy_disconnect(phydev);
-	ixp4xx_mdio_remove();
 	npe_port_tab[NPE_ID(port->id)] = NULL;
 	npe_release(port->npe);
 }
