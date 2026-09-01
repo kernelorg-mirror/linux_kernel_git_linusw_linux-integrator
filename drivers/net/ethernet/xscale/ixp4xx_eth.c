@@ -727,20 +727,18 @@ static int eth_poll(struct napi_struct *napi, int budget)
 #if DEBUG_RX
 			netdev_debug(dev, "eth_poll napi_complete\n");
 #endif
-			napi_complete(napi);
-			qmgr_enable_irq(rxq);
-			if (!qmgr_stat_below_low_watermark(rxq) &&
-			    napi_schedule(napi)) { /* not empty again */
+			if (napi_complete_done(napi, received)) {
+				qmgr_enable_irq(rxq);
+				if (qmgr_stat_below_low_watermark(rxq) ||
+				    !napi_schedule(napi))
+					return received;
+
 #if DEBUG_RX
 				netdev_debug(dev, "eth_poll napi_schedule succeeded\n");
 #endif
 				qmgr_disable_irq(rxq);
-				continue;
 			}
-#if DEBUG_RX
-			netdev_debug(dev, "eth_poll all done\n");
-#endif
-			return received; /* all work done */
+			return received;
 		}
 
 		desc = rx_desc_ptr(port, n);
@@ -765,6 +763,7 @@ static int eth_poll(struct napi_struct *napi, int budget)
 			desc->buf_len = MAX_FRAME_SIZE;
 			desc->pkt_len = 0;
 			queue_put_desc(rxfreeq, rx_desc_phys(port, n), desc);
+			received++;
 			continue;
 		}
 
@@ -779,6 +778,9 @@ static int eth_poll(struct napi_struct *napi, int budget)
 					RX_BUFF_SIZE, DMA_FROM_DEVICE);
 		memcpy_swab32((u32 *)skb->data, (u32 *)port->rx_buff_tab[n],
 			      ALIGN(NET_IP_ALIGN + desc->pkt_len, 4) / 4);
+		dma_sync_single_for_device(&dev->dev,
+					   desc->data - NET_IP_ALIGN,
+					   RX_BUFF_SIZE, DMA_FROM_DEVICE);
 #endif
 		skb_reserve(skb, NET_IP_ALIGN);
 		skb_put(skb, desc->pkt_len);
