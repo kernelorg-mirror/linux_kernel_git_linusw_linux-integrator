@@ -201,6 +201,8 @@ struct port {
 	buffer_t *rx_buff_tab[RX_DESCS], *tx_buff_tab[TX_DESCS];
 	struct desc *desc_tab;	/* coherent */
 	dma_addr_t desc_tab_phys;
+	void *tx_drain_buf;
+	dma_addr_t tx_drain_buf_phys;
 	int id;			/* logical port ID */
 	int speed, duplex;
 	u8 firmware[4];
@@ -1122,6 +1124,13 @@ static int init_queues(struct port *port)
 	memset(port->rx_buff_tab, 0, sizeof(port->rx_buff_tab)); /* tables */
 	memset(port->tx_buff_tab, 0, sizeof(port->tx_buff_tab));
 
+	port->tx_drain_buf = dma_alloc_coherent(&port->netdev->dev, sizeof(u32),
+						&port->tx_drain_buf_phys,
+						GFP_KERNEL);
+	if (!port->tx_drain_buf)
+		return -ENOMEM;
+	memset(port->tx_drain_buf, 0, sizeof(u32));
+
 	/* Setup RX buffers */
 	for (i = 0; i < RX_DESCS; i++) {
 		struct desc *desc = rx_desc_ptr(port, i);
@@ -1175,6 +1184,12 @@ static void destroy_queues(struct port *port)
 		}
 		dma_pool_free(dma_pool, port->desc_tab, port->desc_tab_phys);
 		port->desc_tab = NULL;
+	}
+	if (port->tx_drain_buf) {
+		dma_free_coherent(&port->netdev->dev, sizeof(u32),
+				  port->tx_drain_buf,
+				  port->tx_drain_buf_phys);
+		port->tx_drain_buf = NULL;
 	}
 
 	if (!ports_open && dma_pool) {
@@ -1376,6 +1391,7 @@ static int eth_close(struct net_device *dev)
 			BUG_ON(n < 0);
 			desc = tx_desc_ptr(port, n);
 			phys = tx_desc_phys(port, n);
+			desc->data = port->tx_drain_buf_phys;
 			desc->buf_len = desc->pkt_len = 1;
 			wmb();
 			queue_put_desc(TX_QUEUE(port->id), phys, desc);
