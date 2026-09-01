@@ -1450,7 +1450,7 @@ static unsigned int gmac_rx(struct net_device *netdev, unsigned int budget)
 	unsigned int frame_len, frag_len;
 	struct gmac_rxdesc *rx = NULL;
 	struct gmac_queue_page *gpage;
-	unsigned int received = 0;
+	unsigned int work_done = 0;
 	union gmac_rxdesc_0 word0;
 	union gmac_rxdesc_1 word1;
 	union gmac_rxdesc_3 word3;
@@ -1501,7 +1501,7 @@ static unsigned int gmac_rx(struct net_device *netdev, unsigned int budget)
 				skb = NULL;
 				frag_nr = 0;
 			}
-			continue;
+			goto next_desc;
 		}
 		page = gpage->page;
 
@@ -1523,7 +1523,7 @@ static unsigned int gmac_rx(struct net_device *netdev, unsigned int budget)
 
 		} else if (!skb) {
 			put_page(page);
-			continue;
+			goto next_desc;
 		}
 
 		if (word3.bits32 & EOF_BIT)
@@ -1546,10 +1546,8 @@ static unsigned int gmac_rx(struct net_device *netdev, unsigned int budget)
 			napi_gro_frags(&port->napi);
 			skb = NULL;
 			frag_nr = 0;
-			budget--;
-			received++;
 		}
-		continue;
+		goto next_desc;
 
 err_drop:
 		if (skb) {
@@ -1562,12 +1560,18 @@ err_drop:
 			put_page(page);
 
 		port->stats.rx_dropped++;
+
+next_desc:
+		if (word3.bits32 & EOF_BIT) {
+			budget--;
+			work_done++;
+		}
 	}
 
 	port->rx_skb = skb;
 	port->rx_frag_nr = frag_nr;
 	writew(r, ptr_reg);
-	return received;
+	return work_done;
 }
 
 static int gmac_napi_poll(struct napi_struct *napi, int budget)
@@ -1575,27 +1579,27 @@ static int gmac_napi_poll(struct napi_struct *napi, int budget)
 	struct gemini_ethernet_port *port = netdev_priv(napi->dev);
 	struct gemini_ethernet *geth = port->geth;
 	unsigned int freeq_threshold;
-	unsigned int received;
+	unsigned int work_done;
 
 	freeq_threshold = 1 << (geth->freeq_order - 1);
 	u64_stats_update_begin(&port->rx_stats_syncp);
 
-	received = gmac_rx(napi->dev, budget);
-	if (received < budget) {
+	work_done = gmac_rx(napi->dev, budget);
+	if (work_done < budget) {
 		napi_gro_flush(napi, false);
-		napi_complete_done(napi, received);
+		napi_complete_done(napi, work_done);
 		gmac_enable_rx_irq(napi->dev, 1);
 		++port->rx_napi_exits;
 	}
 
-	port->freeq_refill += received;
+	port->freeq_refill += work_done;
 	if (port->freeq_refill > freeq_threshold) {
 		port->freeq_refill -= freeq_threshold;
 		geth_fill_freeq(geth, true);
 	}
 
 	u64_stats_update_end(&port->rx_stats_syncp);
-	return received;
+	return work_done;
 }
 
 static void gmac_dump_dma_state(struct net_device *netdev)
