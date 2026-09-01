@@ -1481,34 +1481,52 @@ static struct eth_plat_info *ixp4xx_of_get_platdata(struct device *dev)
 
 	plat = devm_kzalloc(dev, sizeof(*plat), GFP_KERNEL);
 	if (!plat)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	ret = of_parse_phandle_with_fixed_args(np, "intel,npe-handle", 1, 0,
 					       &npe_spec);
-	if (ret) {
-		dev_err(dev, "no NPE engine specified\n");
-		return NULL;
+	if (ret)
+		return ERR_PTR(dev_err_probe(dev, ret,
+					     "failed to parse NPE phandle\n"));
+	if (npe_spec.args[0] >= MAX_NPES) {
+		ret = dev_err_probe(dev, -EINVAL, "invalid NPE ID %u\n",
+				    npe_spec.args[0]);
+		of_node_put(npe_spec.np);
+		return ERR_PTR(ret);
 	}
 	/* NPE ID 0x00, 0x10, 0x20... */
 	plat->npe = (npe_spec.args[0] << 4);
+	of_node_put(npe_spec.np);
 
 	/* Get the rx queue as a resource from queue manager */
 	ret = of_parse_phandle_with_fixed_args(np, "queue-rx", 1, 0,
 					       &queue_spec);
-	if (ret) {
-		dev_err(dev, "no rx queue phandle\n");
-		return NULL;
+	if (ret)
+		return ERR_PTR(dev_err_probe(dev, ret,
+					     "failed to parse RX queue phandle\n"));
+	if (queue_spec.args[0] >= HALF_QUEUES) {
+		ret = dev_err_probe(dev, -EINVAL, "invalid RX queue %u\n",
+				    queue_spec.args[0]);
+		of_node_put(queue_spec.np);
+		return ERR_PTR(ret);
 	}
 	plat->rxq = queue_spec.args[0];
+	of_node_put(queue_spec.np);
 
 	/* Get the txready queue as resource from queue manager */
 	ret = of_parse_phandle_with_fixed_args(np, "queue-txready", 1, 0,
 					       &queue_spec);
-	if (ret) {
-		dev_err(dev, "no txready queue phandle\n");
-		return NULL;
+	if (ret)
+		return ERR_PTR(dev_err_probe(dev, ret,
+					     "failed to parse TX-ready queue phandle\n"));
+	if (queue_spec.args[0] >= QUEUES) {
+		ret = dev_err_probe(dev, -EINVAL, "invalid TX-ready queue %u\n",
+				    queue_spec.args[0]);
+		of_node_put(queue_spec.np);
+		return ERR_PTR(ret);
 	}
 	plat->txreadyq = queue_spec.args[0];
+	of_node_put(queue_spec.np);
 
 	ret = of_get_mac_address(np, mac);
 	if (!ret) {
@@ -1531,8 +1549,8 @@ static int ixp4xx_eth_probe(struct platform_device *pdev)
 	int err;
 
 	plat = ixp4xx_of_get_platdata(dev);
-	if (!plat)
-		return -ENODEV;
+	if (IS_ERR(plat))
+		return PTR_ERR(plat);
 
 	if (!(ndev = devm_alloc_etherdev(dev, sizeof(struct port))))
 		return -ENOMEM;
