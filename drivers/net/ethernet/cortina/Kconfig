@@ -17,6 +17,7 @@ config GEMINI_ETHERNET
 	depends on HAS_IOMEM
 	select PHYLIB
 	select CRC32
+	select PAGE_POOL
 	help
 	  This driver supports StorLink SL351x (Gemini) dual Gigabit Ethernet.
 
