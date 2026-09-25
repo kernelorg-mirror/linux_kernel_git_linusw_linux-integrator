@@ -790,11 +790,15 @@ static struct page *geth_freeq_claim(struct gemini_ethernet *geth,
 	if (!valid)
 		goto err_unlock;
 
+	dma_sync_single_range_for_cpu(geth->dev, page_mapping,
+				      mapping - page_mapping, frag_len,
+				      DMA_FROM_DEVICE);
 	xa_erase(&geth->freeq_mappings, index);
 	if (!--gpage->fragments) {
 		slot = gpage - geth->freeq_pages;
-		dma_unmap_single(geth->dev, page_mapping, PAGE_SIZE,
-				 DMA_FROM_DEVICE);
+		dma_unmap_single_attrs(geth->dev, page_mapping, PAGE_SIZE,
+				       DMA_FROM_DEVICE,
+				       DMA_ATTR_SKIP_CPU_SYNC);
 		gpage->page = NULL;
 		gpage->mapping = 0;
 		__clear_bit(slot, geth->freeq_page_bitmap);
@@ -1025,19 +1029,34 @@ static unsigned int geth_fill_freeq(struct gemini_ethernet *geth)
 
 static void geth_freeq_release_pages(struct gemini_ethernet *geth)
 {
+	unsigned int fpp_order = PAGE_SHIFT - geth->freeq_frag_order;
+	unsigned int frag_len = 1 << geth->freeq_frag_order;
 	unsigned int pn;
 
 	for (pn = 0; pn < geth->num_freeq_pages; pn++) {
 		struct gmac_queue_page *gpage;
+		dma_addr_t mapping;
 		struct page *page;
+		unsigned int i;
 
 		gpage = &geth->freeq_pages[pn];
 		if (!gpage->page)
 			continue;
 
 		page = gpage->page;
-		dma_unmap_single(geth->dev, gpage->mapping, PAGE_SIZE,
-				 DMA_FROM_DEVICE);
+		for (i = 0; i < (1 << fpp_order); i++) {
+			mapping = gpage->mapping + i * frag_len;
+			if (xa_load(&geth->freeq_mappings,
+				    geth_freeq_mapping_index(geth, mapping)) != gpage)
+				continue;
+
+			dma_sync_single_range_for_cpu(geth->dev, gpage->mapping,
+						      i * frag_len, frag_len,
+						      DMA_FROM_DEVICE);
+		}
+		dma_unmap_single_attrs(geth->dev, gpage->mapping, PAGE_SIZE,
+				       DMA_FROM_DEVICE,
+				       DMA_ATTR_SKIP_CPU_SYNC);
 		while (gpage->fragments) {
 			put_page(page);
 			gpage->fragments--;
