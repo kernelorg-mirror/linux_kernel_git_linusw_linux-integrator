@@ -1030,6 +1030,21 @@ static void geth_cleanup_freeq(struct gemini_ethernet *geth)
 			  geth->freeq_ring, geth->freeq_dma_base);
 }
 
+static void geth_set_freeq_irq(struct gemini_ethernet *geth, bool enable)
+{
+	unsigned long flags;
+	u32 val;
+
+	spin_lock_irqsave(&geth->irq_lock, flags);
+	val = readl(geth->base + GLOBAL_INTERRUPT_ENABLE_4_REG);
+	if (enable)
+		val |= SWFQ_EMPTY_INT_BIT;
+	else
+		val &= ~SWFQ_EMPTY_INT_BIT;
+	writel(val, geth->base + GLOBAL_INTERRUPT_ENABLE_4_REG);
+	spin_unlock_irqrestore(&geth->irq_lock, flags);
+}
+
 /**
  * geth_resize_freeq() - resize the software queue depth
  * @port: the port requesting the change
@@ -1047,8 +1062,6 @@ static int geth_resize_freeq(struct gemini_ethernet_port *port)
 	struct net_device *other_netdev;
 	unsigned int new_size = 0;
 	unsigned int new_order;
-	unsigned long flags;
-	u32 en;
 	int ret;
 
 	if (netdev->dev_id == 0)
@@ -1079,13 +1092,10 @@ static int geth_resize_freeq(struct gemini_ethernet_port *port)
 	if (geth->freeq_order == new_order)
 		return 0;
 
-	spin_lock_irqsave(&geth->irq_lock, flags);
-
-	/* Disable the software queue IRQs */
-	en = readl(geth->base + GLOBAL_INTERRUPT_ENABLE_4_REG);
-	en &= ~SWFQ_EMPTY_INT_BIT;
-	writel(en, geth->base + GLOBAL_INTERRUPT_ENABLE_4_REG);
-	spin_unlock_irqrestore(&geth->irq_lock, flags);
+	/* The threaded handler can already be running and re-enable the IRQ. */
+	geth_set_freeq_irq(geth, false);
+	synchronize_irq(geth->port1->irq);
+	geth_set_freeq_irq(geth, false);
 
 	/* Drop the old queue */
 	if (geth->freeq_ring)
@@ -1099,10 +1109,7 @@ static int geth_resize_freeq(struct gemini_ethernet_port *port)
 	 * after probe(), this is where the interrupts get turned on
 	 * in the first place.
 	 */
-	spin_lock_irqsave(&geth->irq_lock, flags);
-	en |= SWFQ_EMPTY_INT_BIT;
-	writel(en, geth->base + GLOBAL_INTERRUPT_ENABLE_4_REG);
-	spin_unlock_irqrestore(&geth->irq_lock, flags);
+	geth_set_freeq_irq(geth, true);
 
 	return ret;
 }
