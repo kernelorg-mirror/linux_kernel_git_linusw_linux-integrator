@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright 2024 Linus Walleij <linus.walleij@linaro.org>
+ * Copyright 2024 Linus Walleij <linusw@kernel.org>
  */
 
 /dts-v1/;
@@ -34,7 +34,7 @@
 		ranges;
 
 		secondary-boot@0 {
-			no-map;
+			/* Includes the kernel's initial page tables. */
 			reg = <0x00000000 0x00008000>;
 		};
 		pmc3-firmware@8000 {
