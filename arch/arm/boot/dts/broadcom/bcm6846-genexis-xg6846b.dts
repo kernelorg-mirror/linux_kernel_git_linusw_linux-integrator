@@ -56,6 +56,19 @@
 	};
 };
 
+/* CFE parks CPU1 in its holding pen and does not provide PSCI. */
+&{/psci} {
+	status = "disabled";
+};
+
+&CA7_0 {
+	/delete-property/ enable-method;
+};
+
+&CA7_1 {
+	/delete-property/ enable-method;
+};
+
 &gpio0 {
 	status = "okay";
 };
