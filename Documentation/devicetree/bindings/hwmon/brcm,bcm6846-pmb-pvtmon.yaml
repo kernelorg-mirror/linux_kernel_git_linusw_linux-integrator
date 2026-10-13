@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/hwmon/brcm,bcm6846-pmb-pvtmon.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCM6846 PMB process, voltage and temperature monitor
+
+maintainers:
+  - Linus Walleij <linusw@kernel.org>
+
+description:
+  The process, voltage and temperature monitor (PVTMON) is a child of
+  the Processor Monitor Bus (PMB) controller and uses its indirect
+  register interface. It measures die temperature and seven voltages,
+  including a diagnostic test input. Only the temperature channel is a thermal sensor.
+
+  Acquisition is shared with Power Management Controller (PMC) firmware.
+  Resetting PVTMON affects all acquisition channels.
+
+allOf:
+  - $ref: /schemas/thermal/thermal-sensor.yaml#
+
+properties:
+  compatible:
+    const: brcm,bcm6846-pmb-pvtmon
+
+  clocks:
+    maxItems: 1
+    description: PVTMON acquisition clock
+
+  resets:
+    maxItems: 1
+    description: PVTMON analog-acquisition reset
+
+  '#thermal-sensor-cells':
+    const: 0
+
+required:
+  - compatible
+  - clocks
+  - resets
+  - '#thermal-sensor-cells'
+
+additionalProperties: false
