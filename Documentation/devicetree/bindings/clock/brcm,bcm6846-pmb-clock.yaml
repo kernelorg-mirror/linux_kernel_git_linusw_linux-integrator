@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/brcm,bcm6846-pmb-clock.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCM6846 PMB clocks
+
+maintainers:
+  - Linus Walleij <linusw@kernel.org>
+
+description:
+  The Processor Monitor Bus (PMB) provides access to the RDP and BIU PLL
+  outputs, the Runner clock, the crystal output, the PVTMON acquisition
+  clock and the clock gates in block power-control zones. Clock indices
+  are defined in dt-bindings/clock/brcm,bcm6846-pmb.h.
+
+  This controller is a child of the PMB and shares its indirect register
+  interface. The PLLs and crystal output use a 50 MHz reference clock.
+  Zone clocks require their associated blocks to be powered.
+
+properties:
+  compatible:
+    const: brcm,bcm6846-pmb-clock
+
+  clocks:
+    maxItems: 1
+
+  clock-names:
+    const: ref
+
+  '#clock-cells':
+    const: 1
+
+required:
+  - compatible
+  - clocks
+  - clock-names
+  - '#clock-cells'
+
+additionalProperties: false
