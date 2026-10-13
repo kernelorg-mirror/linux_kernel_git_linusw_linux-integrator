@@ -231,15 +231,16 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		loader@0 {
+		partition@0 {
 			label = "loader";
 			reg = <0x00000000 0x00400000>;
+			read-only;
 		};
-		image@400000 {
+		partition@400000 {
 			label = "image";
-			reg = <0x00400000 0x0fb00000>;
+			reg = <0x00400000 0x0fb80000>;
 		};
-		/* 0x00ff0000-0x00ffffff: bad block list */
+		/* 0x0ff80000-0x0fffffff: bad block tables */
 	};
 };
 
