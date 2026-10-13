@@ -87,6 +87,14 @@ config BCMBCA_XRDP_ETH
 
 	  The module will be called bcmbca_xrdp.
 
+config BCMBCA_XRDP_ETH_KUNIT_TEST
+	tristate "KUnit tests for BCMBCA XRDP descriptors" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  Test receive descriptor validation, transmit descriptor packing,
+	  and the eight-bit packet credit counters used by reduced XRDP.
+
 config BCMGENET
 	tristate "Broadcom GENET internal MAC support"
 	depends on HAS_IOMEM

@@ -7,6 +7,7 @@ obj-$(CONFIG_B44) += b44.o
 obj-$(CONFIG_BCM4908_ENET) += bcm4908_enet.o
 obj-$(CONFIG_BCM63XX_ENET) += bcm63xx_enet.o
 obj-$(CONFIG_BCMBCA_XRDP_ETH) += bcmbca_xrdp.o
+obj-$(CONFIG_BCMBCA_XRDP_ETH_KUNIT_TEST) += bcmbca_xrdp_test.o
 obj-$(CONFIG_BCMGENET) += genet/
 obj-$(CONFIG_BNX2) += bnx2.o
 obj-$(CONFIG_CNIC) += cnic.o
