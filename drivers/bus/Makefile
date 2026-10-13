@@ -7,6 +7,7 @@
 obj-$(CONFIG_ARM_CCI)		+= arm-cci.o
 obj-$(CONFIG_ARM_INTEGRATOR_LM)	+= arm-integrator-lm.o
 obj-$(CONFIG_HISILICON_LPC)	+= hisi_lpc.o
+obj-$(CONFIG_BCMBCA_PMB)		+= bcmbca_pmc3_pmb.o
 obj-$(CONFIG_BRCMSTB_GISB_ARB)	+= brcmstb_gisb.o
 obj-$(CONFIG_MOXTET)		+= moxtet.o
 
