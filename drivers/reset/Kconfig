@@ -49,6 +49,18 @@ config RESET_BCM6345
 	help
 	  This enables the reset controller driver for BCM6345 SoCs.
 
+config RESET_BCMBCA_PMB
+	tristate "Broadcom BCMBCA PMB reset controller"
+	depends on ARCH_BCMBCA || COMPILE_TEST
+	depends on OF && HAS_IOMEM
+	depends on MFD_BCMBCA_PMB
+	default MFD_BCMBCA_PMB
+	help
+	  Reset BCMBCA blocks through the Processor Monitor Bus (PMB) of
+	  the third generation Power Management Controller (PMC3).
+
+	  The module will be called reset-bcmbca-pmb.
+
 config RESET_BERLIN
 	tristate "Berlin Reset Driver"
 	depends on ARCH_BERLIN || COMPILE_TEST
