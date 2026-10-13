@@ -69,6 +69,24 @@ config BCM63XX_ENET
 	  This driver supports the ethernet MACs in the Broadcom 63xx
 	  MIPS chipset family (BCM63XX).
 
+config BCMBCA_XRDP_ETH
+	tristate "Broadcom BCMBCA reduced XRDP Ethernet"
+	depends on ARCH_BCMBCA || COMPILE_TEST
+	depends on COMMON_CLK && OF && HAS_IOMEM
+	depends on RESET_CONTROLLER
+	select CLK_BCMBCA_PMB
+	select MFD_BCMBCA_PMB
+	select PHYLINK
+	select RESET_BCMBCA_PMB
+	help
+	  Ethernet support for the BCMBCA XRDP packet engine using Broadcom's
+	  reduced Runner program and on-chip packet SRAM. Currently supports
+	  BCM6846. Packet transfers use polling.
+	  Firmware must have configured pin multiplexing and external PHYs
+	  before Linux starts.
+
+	  The module will be called bcmbca_xrdp.
+
 config BCMGENET
 	tristate "Broadcom GENET internal MAC support"
 	depends on HAS_IOMEM
