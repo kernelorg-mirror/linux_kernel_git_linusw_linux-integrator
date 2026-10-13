@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/power/brcm,bcm6846-pmb-power.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCM6846 Processor Monitor Bus power controller
+
+maintainers:
+  - Linus Walleij <linusw@kernel.org>
+
+description: |
+  The power controller is a child of the Processor Monitor Bus (PMB)
+  controller and accesses BPCM power zones through the parent regmap.
+  A domain includes all power zones of a block. The XRDP domain groups
+  XRDP, its three Runner cores and WAN, matching the vendor power sequence.
+
+  Domain IDs are defined in dt-bindings/power/brcm,bcm6846-pmb.h:
+    BCM6846_PD_PERIPH: peripheral block (bus 0, device 0, four zones)
+    BCM6846_PD_MEMC: memory controller (bus 1, device 8, one zone)
+    BCM6846_PD_USB20: USB 2.0 (bus 1, device 10, four zones)
+    BCM6846_PD_XRDP: XRDP (bus 1, device 12, three zones), Runner cores
+      (bus 1, devices 14, 15 and 16, one zone each) and WAN
+      (bus 1, device 11, three zones)
+    BCM6846_PD_PCIE0: PCIe 0 (bus 0, device 18, one zone)
+    BCM6846_PD_PCIE1: PCIe 1 (bus 0, device 19, one zone)
+
+  Peripheral and memory domains remain powered because they provide
+  resources required for system operation. CPU and PLL blocks use different
+  register layouts and are outside the scope of this provider.
+
+properties:
+  compatible:
+    const: brcm,bcm6846-pmb-power
+
+  '#power-domain-cells':
+    const: 1
+    description: Power domain ID from dt-bindings/power/brcm,bcm6846-pmb.h
+
+required:
+  - compatible
+  - '#power-domain-cells'
+
+additionalProperties: false
