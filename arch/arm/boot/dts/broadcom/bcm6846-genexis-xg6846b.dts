@@ -76,6 +76,55 @@
 	clocks = <&osc50m>;
 };
 
+&ethernet {
+	status = "okay";
+};
+
+&gmac0 {
+	nvmem-cells = <&macaddr_loader_106a0 0>;
+	nvmem-cell-names = "mac-address";
+	label = "lan1";
+	phy-handle = <&phy1>;
+	status = "okay";
+};
+
+&gmac1 {
+	nvmem-cells = <&macaddr_loader_106a0 1>;
+	nvmem-cell-names = "mac-address";
+	label = "lan2";
+	phy-handle = <&phy2>;
+	status = "okay";
+};
+
+&gmac2 {
+	nvmem-cells = <&macaddr_loader_106a0 2>;
+	nvmem-cell-names = "mac-address";
+	label = "lan3";
+	phy-handle = <&phy3>;
+	status = "okay";
+};
+
+&gmac3 {
+	nvmem-cells = <&macaddr_loader_106a0 3>;
+	nvmem-cell-names = "mac-address";
+	label = "lan4";
+	phy-handle = <&phy4>;
+	status = "okay";
+};
+
+&gmac4 {
+	nvmem-cells = <&macaddr_loader_106a0 4>;
+	nvmem-cell-names = "mac-address";
+	/* The switch supplies the RGMII delays. */
+	phy-mode = "rgmii-id";
+	status = "okay";
+
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+	};
+};
+
 &gpio0 {
 	status = "okay";
 };
@@ -235,6 +284,19 @@
 			label = "loader";
 			reg = <0x00000000 0x00400000>;
 			read-only;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				/* CFE NVRAM at 0x10580, ucaBaseMacAddr at 0x120. */
+				macaddr_loader_106a0: macaddr@106a0 {
+					compatible = "mac-base";
+					reg = <0x106a0 0x6>;
+					#nvmem-cell-cells = <1>;
+				};
+			};
 		};
 		partition@400000 {
 			label = "image";
