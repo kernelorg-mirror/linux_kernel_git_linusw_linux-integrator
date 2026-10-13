@@ -173,6 +173,16 @@ config MFD_ATMEL_SMC
 	bool
 	select MFD_SYSCON
 
+config MFD_BCMBCA_PMB
+	bool "Broadcom BCMBCA Processor Monitor Bus"
+	depends on ARCH_BCMBCA || COMPILE_TEST
+	depends on OF
+	select MFD_CORE
+	help
+	  Provide shared Processor Monitor Bus (PMB) access through the third
+	  generation Power Management Controller (PMC3), initially on
+	  BCM6846.
+
 config MFD_BCM590XX
 	tristate "Broadcom BCM590xx PMUs"
 	select MFD_CORE
