@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/mfd/brcm,bcm6846-pmc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Broadcom BCM6846 Platform Management Controller
+
+maintainers:
+  - Linus Walleij <linusw@kernel.org>
+
+description: |
+  The third generation Platform Management Controller (PMC3) contains
+  separate register banks for PMC control and message queues, the
+  Processor Monitor Bus (PMB) interface within Procmon, and the Maestro
+  processor control registers. Each child owns its register bank. The
+  parent provides address translation and does not own a register bank.
+
+properties:
+  compatible:
+    items:
+      - const: brcm,bca-pmc-3-1
+      - const: simple-mfd
+
+  "#address-cells":
+    const: 1
+
+  "#size-cells":
+    const: 1
+
+  ranges:
+    maxItems: 1
+
+patternProperties:
+  '^system-controller@[0-9a-f]+$':
+    type: object
+    additionalProperties: false
+    description:
+      PMC control and message queue registers, or Maestro processor
+      control, status and interrupt registers
+
+    properties:
+      compatible:
+        enum:
+          - brcm,bcm6846-pmc-control
+          - brcm,bcm6846-pmc-maestro
+
+      reg:
+        maxItems: 1
+
+    required:
+      - compatible
+      - reg
+
+  '^bus@[0-9a-f]+$':
+    $ref: /schemas/soc/bcm/brcm,bcm6846-pmb.yaml#
+    description: PMB configuration, keyhole and address mapping registers
+
+required:
+  - compatible
+  - '#address-cells'
+  - '#size-cells'
+  - ranges
+
+additionalProperties: false
+
+examples:
+  - |
+    system-controller@ffb00000 {
+        /* Broadcom BCA Platform Management Complex version 3.1 */
+        compatible = "brcm,bca-pmc-3-1", "simple-mfd";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0x0 0xffb00000 0x21000>;
+
+        /* Called PMC Platform Management Controller in vendor tree */
+        system-controller@1018 {
+            compatible = "brcm,bcm6846-pmc-control";
+            reg = <0x1018 0x5080>;
+        };
+
+        /* Called PMB Processor Monitor Bus in vendor tree */
+        bus@20100 {
+            compatible = "brcm,bcm6846-pmb";
+            reg = <0x20100 0x200>;
+
+            reset-controller {
+                compatible = "brcm,bcm6846-pmb-reset";
+                #reset-cells = <1>;
+            };
+        };
+
+        /* Called Maestro in vendor tree */
+        system-controller@20400 {
+            compatible = "brcm,bcm6846-pmc-maestro";
+            reg = <0x20400 0x5d0>;
+        };
+    };
