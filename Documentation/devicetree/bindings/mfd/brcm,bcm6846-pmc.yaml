@@ -60,6 +60,11 @@ examples:
             compatible = "brcm,bcm6846-pmb";
             reg = <0x20100 0x200>;
 
+            pmb_power: power-controller {
+                compatible = "brcm,bcm6846-pmb-power";
+                #power-domain-cells = <1>;
+            };
+
             pmb_clk: clock-controller {
                 compatible = "brcm,bcm6846-pmb-clock";
                 clocks = <&osc50m>;
