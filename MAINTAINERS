@@ -5448,9 +5448,11 @@ BROADCOM BCMBCA PMC3 PMB DRIVER
 M:	Linus Walleij <linusw@kernel.org>
 S:	Maintained
 F:	Documentation/devicetree/bindings/mfd/brcm,bcm6846-pmc.yaml
+F:	drivers/mfd/bcmbca_pmc3_pmb.c
 F:	include/dt-bindings/clock/brcm,bcm6846-pmb.h
 F:	include/dt-bindings/power/brcm,bcm6846-pmb.h
 F:	include/dt-bindings/reset/brcm,bcm6846-pmb.h
+F:	include/linux/mfd/bcmbca-pmb.h
 
 BROADCOM BDC DRIVER
 M:	Justin Chen <justin.chen@broadcom.com>
