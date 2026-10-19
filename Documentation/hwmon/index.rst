@@ -54,6 +54,7 @@ Hardware Monitoring Kernel Drivers
    axiado-pwm-fan
    axiado-tsadc
    bcm54140
+   bcm_pmb_pvtmon
    bel-pfe
    bpa-rs600
    cgbc-hwmon
