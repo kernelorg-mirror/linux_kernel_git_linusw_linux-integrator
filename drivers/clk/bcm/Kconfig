@@ -1,5 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+config CLK_BCMBCA_PMB
+	tristate "Broadcom BCMBCA PMB clocks"
+	depends on MFD_BCMBCA_PMB
+	default MFD_BCMBCA_PMB
+	help
+	  Provide BCM6846 PLL output, Runner, crystal, PVTMON and block-zone
+	  clocks through the Processor Monitor Bus.
+
+	  The module will be called clk-bcmbca-pmb.
+
 config CLK_BCM2711_DVP
 	tristate "Broadcom BCM2711 DVP support"
 	depends on ARCH_BCM2835 ||COMPILE_TEST
