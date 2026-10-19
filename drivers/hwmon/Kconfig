@@ -311,6 +311,23 @@ config SENSORS_AXI_FAN_CONTROL
 	  This driver can also be built as a module. If so, the module
 	  will be called axi-fan-control
 
+config SENSORS_BCM_PMB_PVTMON
+	tristate "Broadcom PMB PVTMON hardware monitoring"
+	depends on ARCH_BCMBCA || COMPILE_TEST
+	depends on MFD_BCMBCA_PMB
+	depends on COMMON_CLK
+	depends on RESET_CONTROLLER
+	select CLK_BCMBCA_PMB
+	select RESET_BCMBCA_PMB
+	default MFD_BCMBCA_PMB
+	help
+	  Enable temperature and voltage monitoring through the Processor
+	  Monitor Bus on Broadcom BCM6846. The PMB MFD driver provides
+	  register access. With THERMAL_OF enabled, the temperature channel
+	  also supplies the thermal zones described in the device tree.
+
+	  This driver can also be built as a module called bcm_pmb_pvtmon.
+
 config SENSORS_K8TEMP
 	tristate "AMD Athlon64/FX or Opteron temperature sensor"
 	depends on X86 && PCI

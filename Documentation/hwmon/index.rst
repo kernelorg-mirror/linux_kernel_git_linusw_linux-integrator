@@ -52,6 +52,7 @@ Hardware Monitoring Kernel Drivers
    asus_rog_ryujin
    asus_wmi_sensors
    bcm54140
+   bcm_pmb_pvtmon
    bel-pfe
    bpa-rs600
    cgbc-hwmon
