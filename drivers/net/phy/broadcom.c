@@ -1463,6 +1463,55 @@ static int bcm54xx_disable_autonomous_eee(struct phy_device *phydev)
 				  BCM54XX_MII_BUF_CNTL0_AUTOGREEEN_EN, 0);
 }
 
+static int bcm6846_config_init(struct phy_device *phydev)
+{
+	/* BCM6846 analog calibration from the vendor EGPHY driver. */
+	static const struct {
+		u16 reg;
+		u16 val;
+	} afe[] = {
+		{ 0x0028, 0x0c30 }, /* Enable the DSP clock */
+		{ 0x01e5, 0x0000 }, /* Disable AOF */
+		{ 0x01ea, 0x0bcc }, /* 1G AB symmetry current */
+		{ 0x01e4, 0x233f }, /* Low-pass filter bandwidth */
+		{ 0x01ec, 0xad40 }, /* RCAL offset: 112 to 100 ohms */
+		{ 0x0125, 0x091b }, /* Reduce master current by 4% */
+		{ 0x0152, 0x87f6 }, /* RX on tuning */
+		{ 0x0156, 0x017d }, /* EEE 100TX bandwidth */
+		{ 0x0166, 0x0015 }, /* FFE zero detection */
+		{ 0x00b0, 0x0010 }, /* Assert R_CAL/RC_CAL reset */
+		{ 0x00b0, 0x0000 }, /* Release R_CAL/RC_CAL reset */
+	};
+	int ret, restore, i;
+
+	/* Keep the RDB access mode and register selectors serialized. */
+	phy_lock_mdio_bus(phydev);
+	ret = __bcm_phy_write_exp(phydev, BCM54XX_EXP_REG7E, 0);
+	if (ret)
+		goto unlock;
+
+	for (i = 0; i < ARRAY_SIZE(afe); i++) {
+		ret = __bcm_phy_write_rdb(phydev, afe[i].reg, afe[i].val);
+		if (ret)
+			goto restore_legacy;
+	}
+
+	/* CORE_SHD18_111: automatic pair crossover and Ethernet@Wirespeed. */
+	ret = __bcm_phy_modify_rdb(phydev, 0x002f, 0,
+				   MII_BCM54XX_AUXCTL_MISC_FORCE_AMDIX |
+				   MII_BCM54XX_AUXCTL_SHDWSEL_MISC_WIRESPEED_EN);
+
+restore_legacy:
+	/* Restore legacy access even after a failed calibration write. */
+	restore = __bcm_phy_write_rdb(phydev, BCM54XX_RDB_REG0087,
+				      BCM54XX_ACCESS_MODE_LEGACY_EN);
+	if (!ret)
+		ret = restore;
+unlock:
+	phy_unlock_mdio_bus(phydev);
+	return ret;
+}
+
 static struct phy_driver broadcom_drivers[] = {
 {
 	PHY_ID_MATCH_MODEL(PHY_ID_BCM5411),
@@ -1749,6 +1798,15 @@ static struct phy_driver broadcom_drivers[] = {
 	.config_intr    = bcm_phy_config_intr,
 	.handle_interrupt = bcm_phy_handle_interrupt,
 	.link_change_notify	= bcm54xx_link_change_notify,
+}, {
+	PHY_ID_MATCH_MODEL(PHY_ID_BCM6846),
+	.name		= "Broadcom BCM6846",
+	.flags		= PHY_IS_INTERNAL,
+	/* PHY_GBIT_FEATURES */
+	.soft_reset	= genphy_soft_reset,
+	.config_init	= bcm6846_config_init,
+	.suspend	= genphy_suspend,
+	.resume		= genphy_resume,
 } };
 
 module_phy_driver(broadcom_drivers);
@@ -1775,6 +1833,7 @@ static const struct mdio_device_id __maybe_unused broadcom_tbl[] = {
 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM53125) },
 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM53128) },
 	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM89610) },
+	{ PHY_ID_MATCH_MODEL(PHY_ID_BCM6846) },
 	{ }
 };
 
