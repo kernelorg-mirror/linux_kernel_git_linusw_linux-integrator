@@ -72,6 +72,10 @@
 	cpu-release-addr = <0xff800568>;
 };
 
+&{/bus@ff800000/watchdog@480} {
+	clocks = <&osc50m>;
+};
+
 &gpio0 {
 	status = "okay";
 };
