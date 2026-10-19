@@ -5448,6 +5448,7 @@ BROADCOM BCMBCA PMC3 PMB DRIVER
 M:	Linus Walleij <linusw@kernel.org>
 S:	Maintained
 F:	Documentation/devicetree/bindings/mfd/brcm,bcm6846-pmc.yaml
+F:	drivers/clk/bcm/clk-bcmbca-pmb.c
 F:	drivers/mfd/bcmbca_pmc3_pmb.c
 F:	drivers/pmdomain/bcm/bcmbca-pmb.c
 F:	drivers/reset/reset-bcmbca-pmb.c
