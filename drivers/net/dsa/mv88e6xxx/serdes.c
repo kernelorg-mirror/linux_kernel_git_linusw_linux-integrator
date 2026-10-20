@@ -241,7 +241,7 @@ void mv88e6352_serdes_get_regs(struct mv88e6xxx_chip *chip, int port, void *_p)
 	}
 }
 
-int mv88e6321_serdes_get_lane(struct mv88e6xxx_chip *chip, int port)
+int mv88e632x_serdes_get_lane(struct mv88e6xxx_chip *chip, int port)
 {
 	int lane = -ENODEV;
 	u8 cmode;
@@ -254,7 +254,7 @@ int mv88e6321_serdes_get_lane(struct mv88e6xxx_chip *chip, int port)
 	if (cmode == MV88E6XXX_PORT_STS_CMODE_100BASEX ||
 	    cmode == MV88E6XXX_PORT_STS_CMODE_1000BASEX ||
 	    cmode == MV88E6XXX_PORT_STS_CMODE_SGMII)
-		lane = port + MV88E6321_PORT0_LANE;
+		lane = port + MV88E632X_PORT0_LANE;
 
 	return lane;
 }
