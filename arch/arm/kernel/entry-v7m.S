@@ -39,41 +39,11 @@ __irq_entry:
 	@
 	@ Invoke the IRQ handler
 	@
-	mov	r0, sp
-	ldr_this_cpu sp, irq_stack_ptr, r1, r2
-
-	@
-	@ If we took the interrupt while running in the kernel, we may already
-	@ be using the IRQ stack, so revert to the original value in that case.
-	@
-	subs	r2, sp, r0		@ SP above bottom of IRQ stack?
-	rsbscs	r2, r2, #THREAD_SIZE	@ ... and below the top?
-	movcs	sp, r0
-
-	push	{r0, lr}		@ preserve LR and original SP
-
-	@ routine called with r0 = struct pt_regs *
-	bl	generic_handle_arch_irq
-
+	mov	r0, sp			@ regs
+	push	{r0, lr}		@ preserve LR with 8-byte stack alignment
+	bl	v7m_irq_handler
 	pop	{r0, lr}
-	mov	sp, r0
 
-	@
-	@ Check for any pending work if returning to user
-	@
-	ldr	r1, =BASEADDR_V7M_SCB
-	ldr	r0, [r1, V7M_SCB_ICSR]
-	tst	r0, V7M_SCB_ICSR_RETTOBASE
-	beq	2f
-
-	get_thread_info tsk
-	ldr	r2, [tsk, #TI_FLAGS]
-	movs	r2, r2, lsl #16
-	beq	2f			@ no work pending
-	mov	r0, #V7M_SCB_ICSR_PENDSVSET
-	str	r0, [r1, V7M_SCB_ICSR]	@ raise PendSV
-
-2:
 	@ registers r0-r3 and r12 are automatically restored on exception
 	@ return. r4-r7 were not clobbered in v7m_exception_entry so for
 	@ correctness they don't need to be restored. So only r8-r11 must be
@@ -87,18 +57,13 @@ ENDPROC(__irq_entry)
 __pendsv_entry:
 	v7m_exception_entry
 
-#ifdef CONFIG_RSEQ
-	bl	arm_rseq_user_enter
+	mov	r0, sp			@ regs
+	bl	v7m_pendsv_handler
+
+#ifdef CONFIG_KSTACK_ERASE
+	bl	stackleak_erase_on_task_stack
 #endif
-
-	ldr	r1, =BASEADDR_V7M_SCB
-	mov	r0, #V7M_SCB_ICSR_PENDSVCLR
-	str	r0, [r1, V7M_SCB_ICSR]	@ clear PendSV
-
-	@ execute the pending work, including reschedule
-	get_thread_info tsk
-	mov	why, #0
-	b	v7m_ret_to_user_from_irq
+	restore_user_regs fast = 0, offset = 0
 ENDPROC(__pendsv_entry)
 
 /*
