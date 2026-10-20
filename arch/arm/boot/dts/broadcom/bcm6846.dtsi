@@ -15,6 +15,14 @@
 
 	interrupt-parent = <&gic>;
 
+	aliases {
+		ethernet0 = &gmac0;
+		ethernet1 = &gmac1;
+		ethernet2 = &gmac2;
+		ethernet3 = &gmac3;
+		ethernet4 = &gmac4;
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -106,6 +114,62 @@
 				<0x2000 0x2000>,
 				<0x4000 0x2000>,
 				<0x6000 0x2000>;
+		};
+	};
+
+	ethernet: ethernet@82000000 {
+		compatible = "brcm,bcm6846-enet", "brcm,bcmbca-xrdp-enet";
+		reg = <0x82000000 0x1000000>;
+		clocks = <&pmb_clk BCM6846_CLK_RUNNER>,
+			 <&pmb_clk BCM6846_CLK_XRDP_ZONE0>,
+			 <&pmb_clk BCM6846_CLK_XRDP_ZONE1>,
+			 <&pmb_clk BCM6846_CLK_XRDP_ZONE2>,
+			 <&pmb_clk BCM6846_CLK_RUNNER0>,
+			 <&pmb_clk BCM6846_CLK_RUNNER1>,
+			 <&pmb_clk BCM6846_CLK_RUNNER2>,
+			 <&pmb_clk BCM6846_CLK_WAN_ZONE0>,
+			 <&pmb_clk BCM6846_CLK_WAN_ZONE1>,
+			 <&pmb_clk BCM6846_CLK_WAN_ZONE2>;
+		clock-names = "runner", "xrdp-zone0", "xrdp-zone1", "xrdp-zone2",
+			      "runner0", "runner1", "runner2",
+			      "wan-zone0", "wan-zone1", "wan-zone2";
+		resets = <&pmb_reset BCM6846_RESET_XRDP>;
+		status = "disabled";
+
+		ethernet-ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			gmac0: ethernet@0 {
+				reg = <0>;
+				phy-mode = "gmii";
+				status = "disabled";
+			};
+
+			gmac1: ethernet@1 {
+				reg = <1>;
+				phy-mode = "gmii";
+				status = "disabled";
+			};
+
+			gmac2: ethernet@2 {
+				reg = <2>;
+				phy-mode = "gmii";
+				status = "disabled";
+			};
+
+			gmac3: ethernet@3 {
+				reg = <3>;
+				phy-mode = "gmii";
+				status = "disabled";
+			};
+
+			gmac4: ethernet@4 {
+				reg = <4>;
+				/* Boards must select the appropriate RGMII delay mode. */
+				phy-mode = "rgmii";
+				status = "disabled";
+			};
 		};
 	};
 
