@@ -222,6 +222,12 @@ static inline int nvmem_add_cells_from_dt(struct nvmem_device *nvmem,
 
 #endif /* CONFIG_NVMEM */
 
+#if IS_ENABLED(CONFIG_NVMEM_LAYOUTS)
+void nvmem_layout_parse_mac_base(struct nvmem_cell_info *info);
+#else
+static inline void nvmem_layout_parse_mac_base(struct nvmem_cell_info *info) {}
+#endif
+
 #if IS_ENABLED(CONFIG_NVMEM) && IS_ENABLED(CONFIG_OF)
 
 /**
