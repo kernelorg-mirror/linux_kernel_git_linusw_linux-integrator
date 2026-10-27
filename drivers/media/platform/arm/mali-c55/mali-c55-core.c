@@ -64,12 +64,6 @@ static const unsigned int config_space_addrs[] = {
 	[MALI_C55_CONFIG_PONG] = 0x22b2c,
 };
 
-static const char * const mali_c55_reset_names[MALI_C55_NUM_RESETS] = {
-	"vresetn",
-	"aresetn",
-	"hresetn",
-};
-
 /*
  * System IO
  *
@@ -661,7 +655,27 @@ static int mali_c55_init_context(struct mali_c55 *mali_c55,
 
 static void __mali_c55_power_off(struct mali_c55 *mali_c55)
 {
-	reset_control_bulk_assert(ARRAY_SIZE(mali_c55->resets), mali_c55->resets);
+	int ret;
+
+	ret = reset_control_assert(mali_c55->hresetn);
+	if (ret)
+		goto disable_clocks;
+
+	ret = reset_control_assert(mali_c55->aresetn);
+	if (ret)
+		goto err_deassert_hresetn;
+
+	ret = reset_control_assert(mali_c55->vresetn);
+	if (ret)
+		goto err_deassert_aresetn;
+
+	goto disable_clocks;
+
+err_deassert_aresetn:
+	reset_control_deassert(mali_c55->aresetn);
+err_deassert_hresetn:
+	reset_control_deassert(mali_c55->hresetn);
+disable_clocks:
 	clk_disable_unprepare(mali_c55->vclk);
 	clk_disable_unprepare(mali_c55->aclk);
 	clk_disable_unprepare(mali_c55->hclk);
@@ -702,11 +716,23 @@ static int __mali_c55_power_on(struct mali_c55 *mali_c55)
 		goto err_disable_aclk;
 	}
 
-	ret = reset_control_bulk_deassert(ARRAY_SIZE(mali_c55->resets),
-					  mali_c55->resets);
+	/* Release video, AXI and register interface resets in that order. */
+	ret = reset_control_deassert(mali_c55->vresetn);
 	if (ret) {
-		dev_err(mali_c55->dev, "failed to deassert resets\n");
-		goto err_disable_vclk;
+		dev_err(mali_c55->dev, "failed to deassert vresetn\n");
+		goto err_assert_vresetn;
+	}
+
+	ret = reset_control_deassert(mali_c55->aresetn);
+	if (ret) {
+		dev_err(mali_c55->dev, "failed to deassert aresetn\n");
+		goto err_assert_aresetn;
+	}
+
+	ret = reset_control_deassert(mali_c55->hresetn);
+	if (ret) {
+		dev_err(mali_c55->dev, "failed to deassert hresetn\n");
+		goto err_assert_hresetn;
 	}
 
 	/* Use "software only" context management. */
@@ -741,7 +767,13 @@ static int __mali_c55_power_on(struct mali_c55 *mali_c55)
 
 	return 0;
 
-err_disable_vclk:
+	/* A shared reset takes a reference before calling its provider. */
+err_assert_hresetn:
+	reset_control_assert(mali_c55->hresetn);
+err_assert_aresetn:
+	reset_control_assert(mali_c55->aresetn);
+err_assert_vresetn:
+	reset_control_assert(mali_c55->vresetn);
 	clk_disable_unprepare(mali_c55->vclk);
 err_disable_aclk:
 	clk_disable_unprepare(mali_c55->aclk);
@@ -818,13 +850,20 @@ static int mali_c55_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(mali_c55->vclk),
 				     "failed to acquire vclk\n");
 
-	for (unsigned int i = 0; i < ARRAY_SIZE(mali_c55_reset_names); i++)
-		mali_c55->resets[i].id = mali_c55_reset_names[i];
+	mali_c55->vresetn = devm_reset_control_get_optional_shared(dev, "vresetn");
+	if (IS_ERR(mali_c55->vresetn))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->vresetn),
+				     "failed to acquire vresetn\n");
 
-	ret = devm_reset_control_bulk_get_optional_shared(dev,
-			ARRAY_SIZE(mali_c55_reset_names), mali_c55->resets);
-	if (ret)
-		return dev_err_probe(dev, ret, "failed to acquire resets\n");
+	mali_c55->aresetn = devm_reset_control_get_optional_shared(dev, "aresetn");
+	if (IS_ERR(mali_c55->aresetn))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->aresetn),
+				     "failed to acquire aresetn\n");
+
+	mali_c55->hresetn = devm_reset_control_get_optional_shared(dev, "hresetn");
+	if (IS_ERR(mali_c55->hresetn))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->hresetn),
+				     "failed to acquire hresetn\n");
 
 	of_reserved_mem_device_init(dev);
 	vb2_dma_contig_set_max_seg_size(dev, UINT_MAX);
