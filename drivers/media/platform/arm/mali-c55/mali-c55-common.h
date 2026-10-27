@@ -38,7 +38,6 @@
 
 #define MALI_C55_DEFAULT_MEDIA_BUS_FMT	MEDIA_BUS_FMT_RGB121212_1X36
 
-#define MALI_C55_NUM_CLKS		3
 #define MALI_C55_NUM_RESETS		3
 
 struct device;
@@ -237,7 +236,9 @@ struct mali_c55_context {
 struct mali_c55 {
 	struct device *dev;
 	void __iomem *base;
-	struct clk_bulk_data clks[MALI_C55_NUM_CLKS];
+	struct clk *hclk;
+	struct clk *aclk;
+	struct clk *vclk;
 	struct reset_control_bulk_data resets[MALI_C55_NUM_RESETS];
 	int irqnum;
 
