@@ -64,12 +64,6 @@ static const unsigned int config_space_addrs[] = {
 	[MALI_C55_CONFIG_PONG] = 0x22b2c,
 };
 
-static const char * const mali_c55_clk_names[MALI_C55_NUM_CLKS] = {
-	"vclk",
-	"aclk",
-	"hclk",
-};
-
 static const char * const mali_c55_reset_names[MALI_C55_NUM_RESETS] = {
 	"vresetn",
 	"aresetn",
@@ -668,7 +662,9 @@ static int mali_c55_init_context(struct mali_c55 *mali_c55,
 static void __mali_c55_power_off(struct mali_c55 *mali_c55)
 {
 	reset_control_bulk_assert(ARRAY_SIZE(mali_c55->resets), mali_c55->resets);
-	clk_bulk_disable_unprepare(ARRAY_SIZE(mali_c55->clks), mali_c55->clks);
+	clk_disable_unprepare(mali_c55->vclk);
+	clk_disable_unprepare(mali_c55->aclk);
+	clk_disable_unprepare(mali_c55->hclk);
 }
 
 static int __maybe_unused mali_c55_runtime_suspend(struct device *dev)
@@ -687,20 +683,30 @@ static int __mali_c55_power_on(struct mali_c55 *mali_c55)
 	int ret;
 	u32 val;
 
-	ret = clk_bulk_prepare_enable(ARRAY_SIZE(mali_c55->clks),
-				      mali_c55->clks);
+	/* Enable the register interface, AXI and video clocks in that order. */
+	ret = clk_prepare_enable(mali_c55->hclk);
 	if (ret) {
-		dev_err(mali_c55->dev, "failed to enable clocks\n");
+		dev_err(mali_c55->dev, "failed to enable hclk\n");
 		return ret;
+	}
+
+	ret = clk_prepare_enable(mali_c55->aclk);
+	if (ret) {
+		dev_err(mali_c55->dev, "failed to enable aclk\n");
+		goto err_disable_hclk;
+	}
+
+	ret = clk_prepare_enable(mali_c55->vclk);
+	if (ret) {
+		dev_err(mali_c55->dev, "failed to enable vclk\n");
+		goto err_disable_aclk;
 	}
 
 	ret = reset_control_bulk_deassert(ARRAY_SIZE(mali_c55->resets),
 					  mali_c55->resets);
 	if (ret) {
 		dev_err(mali_c55->dev, "failed to deassert resets\n");
-		clk_bulk_disable_unprepare(ARRAY_SIZE(mali_c55->clks),
-					   mali_c55->clks);
-		return ret;
+		goto err_disable_vclk;
 	}
 
 	/* Use "software only" context management. */
@@ -734,6 +740,15 @@ static int __mali_c55_power_on(struct mali_c55 *mali_c55)
 			   val, !val, 10 * USEC_PER_MSEC, 250 * USEC_PER_MSEC);
 
 	return 0;
+
+err_disable_vclk:
+	clk_disable_unprepare(mali_c55->vclk);
+err_disable_aclk:
+	clk_disable_unprepare(mali_c55->aclk);
+err_disable_hclk:
+	clk_disable_unprepare(mali_c55->hclk);
+
+	return ret;
 }
 
 static int __maybe_unused mali_c55_runtime_resume(struct device *dev)
@@ -788,12 +803,20 @@ static int mali_c55_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(mali_c55->base),
 				     "failed to map IO memory\n");
 
-	for (unsigned int i = 0; i < ARRAY_SIZE(mali_c55_clk_names); i++)
-		mali_c55->clks[i].id = mali_c55_clk_names[i];
+	mali_c55->hclk = devm_clk_get(dev, "hclk");
+	if (IS_ERR(mali_c55->hclk))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->hclk),
+				     "failed to acquire hclk\n");
 
-	ret = devm_clk_bulk_get(dev, ARRAY_SIZE(mali_c55->clks), mali_c55->clks);
-	if (ret)
-		return dev_err_probe(dev, ret, "failed to acquire clocks\n");
+	mali_c55->aclk = devm_clk_get(dev, "aclk");
+	if (IS_ERR(mali_c55->aclk))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->aclk),
+				     "failed to acquire aclk\n");
+
+	mali_c55->vclk = devm_clk_get(dev, "vclk");
+	if (IS_ERR(mali_c55->vclk))
+		return dev_err_probe(dev, PTR_ERR(mali_c55->vclk),
+				     "failed to acquire vclk\n");
 
 	for (unsigned int i = 0; i < ARRAY_SIZE(mali_c55_reset_names); i++)
 		mali_c55->resets[i].id = mali_c55_reset_names[i];
