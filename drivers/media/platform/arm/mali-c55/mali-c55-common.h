@@ -38,8 +38,6 @@
 
 #define MALI_C55_DEFAULT_MEDIA_BUS_FMT	MEDIA_BUS_FMT_RGB121212_1X36
 
-#define MALI_C55_NUM_RESETS		3
-
 struct device;
 struct mali_c55;
 struct mali_c55_cap_dev;
@@ -239,7 +237,9 @@ struct mali_c55 {
 	struct clk *hclk;
 	struct clk *aclk;
 	struct clk *vclk;
-	struct reset_control_bulk_data resets[MALI_C55_NUM_RESETS];
+	struct reset_control *vresetn;
+	struct reset_control *aresetn;
+	struct reset_control *hresetn;
 	int irqnum;
 
 	u16 capabilities;
