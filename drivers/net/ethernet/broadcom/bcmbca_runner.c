@@ -9,9 +9,12 @@
  * serializes accesses. Core control requires powered, clocked register banks.
  */
 
+#include <linux/align.h>
 #include <linux/bits.h>
 #include <linux/delay.h>
+#include <linux/errno.h>
 #include <linux/io.h>
+#include <linux/unaligned.h>
 
 #include "bcmbca_runner.h"
 
@@ -37,6 +40,23 @@ void bcmbca_runner_stop(struct bcmbca_runner *runner)
 void bcmbca_runner_sync(struct bcmbca_runner *runner)
 {
 	readl(runner->base + runner->data->ctrl);
+}
+
+int bcmbca_runner_load_program(struct bcmbca_runner *runner, u32 offset,
+			       u32 size, u32 reg_size)
+{
+	const struct bcmbca_runner_data *data = runner->data;
+	unsigned int i;
+
+	if (!data->program || !data->program_end ||
+	    size != data->program_end - data->program ||
+	    offset >= reg_size || size > reg_size - offset ||
+	    !IS_ALIGNED(offset, 4) || !IS_ALIGNED(size, 4))
+		return -EINVAL;
+	for (i = 0; i < size; i += 4)
+		iowrite32be(get_unaligned_be32(data->program + i),
+			    runner->base + offset + i);
+	return 0;
 }
 
 bool bcmbca_runner_reduced_receive(struct bcmbca_runner *runner, u32 *word0,
