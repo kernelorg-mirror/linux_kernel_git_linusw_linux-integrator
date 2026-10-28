@@ -8,21 +8,25 @@
  * The SRAM Buffer Pool Manager (SBPM) allocates and frees 128-byte buffers,
  * which are linked together to hold larger packets. The driver does not
  * use host DMA rings or the vendor RDPA ABI. Packet descriptors use the
- * vendor GEN45 SBPM format. One timer-driven NAPI instance services the
- * shared packet engine and feeds each port into GRO.
+ * vendor GEN45 SBPM format. Queue interrupts schedule one NAPI instance
+ * for the shared packet engine and per-port GRO. A timer also services TX
+ * completions and Runner programs without receive notifications.
  * Core control and the reduced firmware ABI live in bcmbca_runner.c.
  * Firmware must have configured pin multiplexing and external PHYs.
  */
 
 #include <linux/bitmap.h>
 #include <linux/clk.h>
+#include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
 #include <linux/hrtimer.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
@@ -38,6 +42,13 @@
 
 #define TX_QUEUE_LEN		64
 #define POLL_INTERVAL_US		1000
+
+/* UBUS slave Runner queue interrupt controller, separate from RNR_REGS. */
+#define QUEUE_IRQ_COUNT		32
+#define QUEUE_ISR		0x0
+#define QUEUE_ISM		0x4
+#define QUEUE_IER		0x8
+#define QUEUE_ITR		0xc
 #define MIB_RX_PAUSE		0x40
 #define MIB_TX_PAUSE		0xb4
 #define MIB_CONTROL		0x180
@@ -118,6 +129,7 @@ static const struct bcmbca_xrdp_enet_variant bcm6846_variant = {
 	.reg_size = 0x1000000,
 	.sbpm = 0xd98000,
 	.psram = 0x600000,
+	.queue_intr = 0xd97080,
 	.num_buffers = 1536,
 	.num_ports = ARRAY_SIZE(bcm6846_ports),
 	.sbpm_alloc_sa = 30,
@@ -156,6 +168,19 @@ struct bcmbca_xrdp_enet {
 	struct hrtimer poll_timer;
 	/* Serialize all CPU accesses to SBPM's shared command registers. */
 	spinlock_t lock;
+	/* The hard IRQ handler never takes the packet-engine lock. */
+	spinlock_t irq_lock;
+	/* Only one port may exercise the shared interrupt test register. */
+	struct mutex irq_test_lock;
+	struct completion irq_test_done;
+	int irqs[QUEUE_IRQ_COUNT];
+	unsigned int num_irqs;
+	u32 irq_test_bit;
+	u32 irq_seen;
+	u64 irq_events;
+	u64 irq_test_events;
+	atomic_t timer_runs;
+	bool irq_ready;
 	u64 sbpm_timeouts;
 	u64 sbpm_alloc_failures;
 	u64 rx_invalid_descriptors;
@@ -167,6 +192,101 @@ struct bcmbca_xrdp_enet {
 	bool stopping;
 	struct bcmbca_xrdp_port *ports[];
 };
+
+static void __iomem *bcmbca_xrdp_irq_base(struct bcmbca_xrdp_enet *enet)
+{
+	return enet->base + enet->variant->queue_intr;
+}
+
+static irqreturn_t bcmbca_xrdp_irq(int irq, void *data)
+{
+	struct bcmbca_xrdp_enet *enet = data;
+	void __iomem *base = bcmbca_xrdp_irq_base(enet);
+	u32 pending;
+	unsigned int i;
+	bool handled = false, schedule = false;
+
+	spin_lock(&enet->irq_lock);
+	if (!enet->irq_ready)
+		goto out;
+	for (i = 0; i < enet->num_irqs; i++)
+		if (enet->irqs[i] == irq)
+			break;
+	if (i == enet->num_irqs)
+		goto out;
+	pending = readl(base + QUEUE_ISM);
+	if (!pending)
+		goto out;
+	handled = true;
+	if ((pending & enet->irq_test_bit) &&
+	    (enet->irq_test_bit == BIT(i) || !(pending & BIT(i)))) {
+		/* ITR is level-sensitive; clear it before acknowledging ISR. */
+		writel(0, base + QUEUE_ITR);
+		writel(enet->irq_test_bit, base + QUEUE_ISR);
+		readl(base + QUEUE_ISR);
+		/* A misrouted test must time out without leaving a level active. */
+		if (enet->irq_test_bit == BIT(i)) {
+			enet->irq_test_events++;
+			complete(&enet->irq_test_done);
+		}
+	}
+	pending &= ~enet->irq_test_bit;
+	if (pending) {
+		writel(enet->irq_test_bit, base + QUEUE_IER);
+		writel(pending, base + QUEUE_ISR);
+		readl(base + QUEUE_IER);
+		enet->irq_events++;
+		enet->irq_seen |= pending;
+		schedule = true;
+	}
+out:
+	spin_unlock(&enet->irq_lock);
+	if (schedule)
+		napi_schedule_irqoff(&enet->napi);
+	return IRQ_RETVAL(handled);
+}
+
+static void bcmbca_xrdp_irq_stop(struct bcmbca_xrdp_enet *enet)
+{
+	unsigned long flags;
+	unsigned int i;
+
+	spin_lock_irqsave(&enet->irq_lock, flags);
+	enet->irq_ready = false;
+	if (enet->hw_accessible) {
+		writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+		writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_ITR);
+		readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+	}
+	spin_unlock_irqrestore(&enet->irq_lock, flags);
+	for (i = 0; i < enet->num_irqs; i++)
+		synchronize_irq(enet->irqs[i]);
+}
+
+static int bcmbca_xrdp_irq_init(struct platform_device *pdev)
+{
+	struct bcmbca_xrdp_enet *enet = platform_get_drvdata(pdev);
+	unsigned int i;
+	int irq, ret;
+
+	/* Old DTs can continue to use the timer-driven packet interface. */
+	if (!of_property_present(pdev->dev.of_node, "interrupts"))
+		return 0;
+	for (i = 0; i < QUEUE_IRQ_COUNT; i++) {
+		char name[16];
+
+		snprintf(name, sizeof(name), "queue%u", i);
+		irq = platform_get_irq_byname(pdev, name);
+		if (irq < 0)
+			return irq;
+		ret = devm_request_irq(&pdev->dev, irq, bcmbca_xrdp_irq, 0,
+				       dev_name(&pdev->dev), enet);
+		if (ret)
+			return ret;
+		enet->irqs[enet->num_irqs++] = irq;
+	}
+	return 0;
+}
 
 static void bcmbca_xrdp_quiesce(struct bcmbca_xrdp_enet *enet)
 {
@@ -193,6 +313,7 @@ static void bcmbca_xrdp_hw_stop(struct bcmbca_xrdp_enet *enet)
 	if (!enet->hw_accessible)
 		return;
 
+	bcmbca_xrdp_irq_stop(enet);
 	bcmbca_xrdp_quiesce(enet);
 	clk_bulk_disable_unprepare(enet->num_clks, enet->clks);
 	enet->hw_accessible = false;
@@ -222,6 +343,9 @@ static int bcmbca_xrdp_hw_init(struct bcmbca_xrdp_enet *enet)
 		return dev_err_probe(enet->dev, ret, "cannot enable XRDP clocks\n");
 	/* All register banks are accessible only after reset and clock setup. */
 	enet->hw_accessible = true;
+	writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+	writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_ITR);
+	writel(U32_MAX, bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
 
 	if (readl(enet->base + variant->sbpm + SBPM_GLOBAL_COUNT) ||
 	    readl(enet->base + variant->sbpm + SBPM_UG0_COUNT) ||
@@ -532,6 +656,7 @@ static enum hrtimer_restart bcmbca_xrdp_poll_timer(struct hrtimer *timer)
 	struct bcmbca_xrdp_enet *enet = container_of(timer, struct bcmbca_xrdp_enet,
 						  poll_timer);
 
+	atomic_inc(&enet->timer_runs);
 	napi_schedule(&enet->napi);
 	return HRTIMER_NORESTART;
 }
@@ -542,6 +667,7 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 	const struct bcmbca_xrdp_enet_variant *variant = enet->variant;
 	struct sk_buff_head rx_queue;
 	struct sk_buff *skb;
+	unsigned long flags;
 	unsigned int i, tx_work;
 	int work_done = 0;
 
@@ -550,6 +676,13 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 	spin_lock_bh(&enet->lock);
 	if (enet->stopping || enet->faulted)
 		goto out;
+	spin_lock_irqsave(&enet->irq_lock, flags);
+	if (enet->irq_ready) {
+		writel(enet->irq_test_bit, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+		/* Clear old notifications before draining the SRAM FIFO. */
+		writel(~enet->irq_test_bit, bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
+	}
+	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	enet->poll_runs++;
 	for (; work_done < budget && !enet->faulted; work_done++)
 		if (!bcmbca_xrdp_receive(enet, &rx_queue))
@@ -595,6 +728,10 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 	}
 	if (enet->faulted) {
 		dev_err(enet->dev, "packet engine stopped after SBPM failure\n");
+		spin_lock_irqsave(&enet->irq_lock, flags);
+		enet->irq_ready = false;
+		writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+		spin_unlock_irqrestore(&enet->irq_lock, flags);
 		for (i = 0; i < variant->num_ports; i++)
 			if (enet->ports[i])
 				netif_stop_queue(enet->ports[i]->ndev);
@@ -608,9 +745,16 @@ out:
 	/* GRO may transmit replies, so do not hold the packet-engine lock. */
 	while ((skb = __skb_dequeue(&rx_queue)))
 		napi_gro_receive(napi, skb);
-	if (budget && work_done < budget)
-		napi_complete_done(napi, work_done);
-	/* napi_disable() may return as soon as ownership is released. */
+	/* Completion can flush GRO and transmit replies, too. */
+	if (budget && work_done < budget && napi_complete_done(napi, work_done)) {
+		spin_lock_irqsave(&enet->irq_lock, flags);
+		if (enet->irq_ready) {
+			writel(U32_MAX, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+			readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+		}
+		spin_unlock_irqrestore(&enet->irq_lock, flags);
+	}
+	/* netif_napi_del() waits for the poll callback before freeing enet. */
 	return work_done;
 }
 
@@ -827,6 +971,55 @@ static void bcmbca_xrdp_get_pause_stats(struct net_device *ndev,
 	spin_unlock_bh(&enet->lock);
 }
 
+static const char bcmbca_xrdp_tests[][ETH_GSTRING_LEN] = {
+	"queue_interrupt_delivery",
+};
+
+static void bcmbca_xrdp_self_test(struct net_device *ndev,
+				  struct ethtool_test *test, u64 *data)
+{
+	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
+	struct bcmbca_xrdp_enet *enet = port->enet;
+	void __iomem *base = bcmbca_xrdp_irq_base(enet);
+	unsigned long flags, delivered;
+	unsigned int i;
+	u32 failed = 0;
+
+	/* Exercise the routing, independently of Runner packet notifications. */
+	mutex_lock(&enet->irq_test_lock);
+	for (i = 0; i < QUEUE_IRQ_COUNT; i++) {
+		spin_lock_irqsave(&enet->irq_lock, flags);
+		if (!enet->irq_ready) {
+			spin_unlock_irqrestore(&enet->irq_lock, flags);
+			failed = U32_MAX;
+			break;
+		}
+		reinit_completion(&enet->irq_test_done);
+		enet->irq_test_bit = BIT(i);
+		writel(readl(base + QUEUE_IER) | BIT(i), base + QUEUE_IER);
+		writel(BIT(i), base + QUEUE_ITR);
+		readl(base + QUEUE_ITR);
+		spin_unlock_irqrestore(&enet->irq_lock, flags);
+
+		delivered = wait_for_completion_timeout(&enet->irq_test_done,
+							msecs_to_jiffies(100));
+		spin_lock_irqsave(&enet->irq_lock, flags);
+		if (enet->irq_ready) {
+			writel(0, base + QUEUE_ITR);
+			writel(BIT(i), base + QUEUE_ISR);
+			readl(base + QUEUE_ISR);
+		}
+		enet->irq_test_bit = 0;
+		spin_unlock_irqrestore(&enet->irq_lock, flags);
+		if (!delivered)
+			failed |= BIT(i);
+	}
+	mutex_unlock(&enet->irq_test_lock);
+	data[0] = failed;
+	if (failed)
+		test->flags |= ETH_TEST_FL_FAILED;
+}
+
 /* Free-running 32-bit UniMAC counters; reads do not clear them. */
 static const struct {
 	char name[ETH_GSTRING_LEN];
@@ -875,10 +1068,19 @@ static const char bcmbca_xrdp_sw_stats[][ETH_GSTRING_LEN] = {
 	"mac_pause_quanta",
 	"mac_pause_refresh",
 	"bbh_flow_control",
+	"queue_irqs_registered",
+	"shared_queue_irq_events",
+	"shared_queue_irq_seen",
+	"shared_irq_test_events",
+	"shared_poll_timer_runs",
+	"queue_irq_status",
+	"queue_irq_enable",
 };
 
 static int bcmbca_xrdp_get_sset_count(struct net_device *ndev, int sset)
 {
+	if (sset == ETH_SS_TEST)
+		return ARRAY_SIZE(bcmbca_xrdp_tests);
 	if (sset != ETH_SS_STATS)
 		return -EOPNOTSUPP;
 	return ARRAY_SIZE(bcmbca_xrdp_mib_stats) + ARRAY_SIZE(bcmbca_xrdp_sw_stats);
@@ -888,6 +1090,10 @@ static void bcmbca_xrdp_get_strings(struct net_device *ndev, u32 sset, u8 *data)
 {
 	unsigned int i;
 
+	if (sset == ETH_SS_TEST) {
+		memcpy(data, bcmbca_xrdp_tests, sizeof(bcmbca_xrdp_tests));
+		return;
+	}
 	if (sset != ETH_SS_STATS)
 		return;
 	for (i = 0; i < ARRAY_SIZE(bcmbca_xrdp_mib_stats); i++) {
@@ -903,6 +1109,7 @@ static void bcmbca_xrdp_get_stats(struct net_device *ndev,
 	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
 	struct bcmbca_xrdp_enet *enet = port->enet;
 	void __iomem *mib = enet->base + port->data->mib;
+	unsigned long flags;
 	unsigned int i;
 
 	spin_lock_bh(&enet->lock);
@@ -929,6 +1136,15 @@ static void bcmbca_xrdp_get_stats(struct net_device *ndev,
 	data[i++] = readl(port->mac + UMAC_PAUSE_QUANTA);
 	data[i++] = readl(port->mac + UMAC_PAUSE_CTRL);
 	data[i++] = readl(enet->base + port->data->bbh_rx + BBH_RX_FLOWCTRL);
+	spin_lock_irqsave(&enet->irq_lock, flags);
+	data[i++] = enet->num_irqs;
+	data[i++] = enet->irq_events;
+	data[i++] = enet->irq_seen;
+	data[i++] = enet->irq_test_events;
+	data[i++] = (u32)atomic_read(&enet->timer_runs);
+	data[i++] = readl(bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
+	data[i++] = readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	spin_unlock_bh(&enet->lock);
 }
 
@@ -942,6 +1158,7 @@ static const struct ethtool_ops bcmbca_xrdp_ethtool_ops = {
 	.get_sset_count = bcmbca_xrdp_get_sset_count,
 	.get_strings = bcmbca_xrdp_get_strings,
 	.get_ethtool_stats = bcmbca_xrdp_get_stats,
+	.self_test = bcmbca_xrdp_self_test,
 };
 
 static int bcmbca_xrdp_port_create(struct bcmbca_xrdp_enet *enet, struct device_node *np)
@@ -1143,6 +1360,7 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	struct device_node *ports;
 	struct bcmbca_xrdp_enet *enet;
 	struct resource *res;
+	unsigned long flags;
 	int ret;
 
 	variant = device_get_match_data(dev);
@@ -1174,6 +1392,9 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	enet->runner.data = &variant->runner;
 	enet->runner.reduced = &variant->reduced;
 	spin_lock_init(&enet->lock);
+	spin_lock_init(&enet->irq_lock);
+	mutex_init(&enet->irq_test_lock);
+	init_completion(&enet->irq_test_done);
 	hrtimer_setup(&enet->poll_timer, bcmbca_xrdp_poll_timer, CLOCK_MONOTONIC,
 		      HRTIMER_MODE_REL);
 	platform_set_drvdata(pdev, enet);
@@ -1198,6 +1419,9 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 		goto put_ports;
 	}
 	netif_napi_add(enet->napi_dev, &enet->napi, bcmbca_xrdp_poll);
+	ret = bcmbca_xrdp_irq_init(pdev);
+	if (ret)
+		goto destroy_ports;
 	for_each_available_child_of_node_scoped(ports, np) {
 		ret = bcmbca_xrdp_port_create(enet, np);
 		if (ret)
@@ -1205,6 +1429,10 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	}
 	of_node_put(ports);
 	napi_enable(&enet->napi);
+	/* IRQ sources remain masked until the first NAPI pass completes. */
+	spin_lock_irqsave(&enet->irq_lock, flags);
+	enet->irq_ready = enet->num_irqs == QUEUE_IRQ_COUNT;
+	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	napi_schedule(&enet->napi);
 	return 0;
 
@@ -1225,6 +1453,7 @@ static void bcmbca_xrdp_remove(struct platform_device *pdev)
 	spin_lock_bh(&enet->lock);
 	enet->stopping = true;
 	spin_unlock_bh(&enet->lock);
+	bcmbca_xrdp_irq_stop(enet);
 	hrtimer_cancel(&enet->poll_timer);
 	napi_disable(&enet->napi);
 	/* Flush GRO before freeing any of the port devices. */
