@@ -48,6 +48,7 @@ struct bcmbca_xrdp_enet_variant {
 	u32 reg_size;
 	u32 sbpm;
 	u32 psram;
+	u32 queue_intr;
 	unsigned int num_buffers;
 	unsigned int num_ports;
 	/* SBPM source addresses for CPU allocation and RX release commands. */
