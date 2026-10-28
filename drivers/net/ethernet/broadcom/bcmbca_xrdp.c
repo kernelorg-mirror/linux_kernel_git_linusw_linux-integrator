@@ -74,6 +74,8 @@
 
 #include "bcm6846_enet_data.h"
 
+extern const u8 bcm6846_runner_start[], bcm6846_runner_end[];
+
 /* UniMAC/BBH registers, RGMII attachment and Runner TX routing per port. */
 static const struct bcmbca_xrdp_port_data bcm6846_ports[] = {
 	{
@@ -101,6 +103,8 @@ static const struct bcmbca_xrdp_enet_variant bcm6846_variant = {
 		.stride = 0x1000,
 		.sram = 0xc00000,
 		.num_cores = 3,
+		.program = bcm6846_runner_start,
+		.program_end = bcm6846_runner_end,
 	},
 	.reduced = {
 		.rx_fifo = 0x800,
@@ -284,6 +288,12 @@ static int bcmbca_xrdp_hw_init(struct bcmbca_xrdp_enet *enet)
 		case 5: /* The reduced image has exactly one Runner SRAM area. */
 			if (offset != variant->runner.sram || value)
 				return -EINVAL;
+			break;
+		case 8: /* Assembled program, including instruction RAM NOP padding. */
+			ret = bcmbca_runner_load_program(&enet->runner, offset, value,
+							 variant->reg_size);
+			if (ret)
+				return ret;
 			break;
 		default:
 			return -EINVAL;

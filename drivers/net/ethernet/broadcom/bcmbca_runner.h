@@ -10,6 +10,8 @@ struct bcmbca_runner_data {
 	u32 stride;
 	u32 sram;
 	unsigned int num_cores;
+	const u8 *program;
+	const u8 *program_end;
 };
 
 /* SRAM offsets in the reduced program ABI, not fixed hardware registers. */
@@ -30,6 +32,8 @@ struct bcmbca_runner {
 
 void bcmbca_runner_stop(struct bcmbca_runner *runner);
 void bcmbca_runner_sync(struct bcmbca_runner *runner);
+int bcmbca_runner_load_program(struct bcmbca_runner *runner, u32 offset,
+			       u32 size, u32 reg_size);
 
 /* These operations require the reduced SRAM packet interface. */
 bool bcmbca_runner_reduced_receive(struct bcmbca_runner *runner, u32 *word0,

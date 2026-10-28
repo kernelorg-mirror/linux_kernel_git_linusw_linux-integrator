@@ -1,0 +1,279 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright 2019 Broadcom Ltd.
+#
+# BCM6846 reduced SRAM Buffer Pool Manager (SBPM) Runner program,
+# reconstructed from the GPL U-Boot bcmbca/xrdp/data_path_6846.c image. Addresses are byte addresses.
+# Encoding forms and unresolved fields are documented in runner-asm/README.rst.
+# The explicit control operands preserve pipeline and peripheral behavior.
+#
+# The host initializes r16 with the task PC in its high half. Keep these
+# entry addresses stable until the context initialization is updated too.
+
+.const GLOBAL_REGS = 0x60
+.const DEBUG_REGS = 0x2c0
+.const TASK_INDEX = 0xec
+.const MEM32 = 0x02
+.const MEM64 = 0x03
+.const MEM_EXT32 = 0x16
+.const MEM_EXT64 = 0x17
+.const BR_DEBUG = 0x1103
+.const BR_FIFO_BUSY = 0x11d7
+.const JMP_VECTOR = 0x1400
+.const JMP_INIT_EXIT = 0x1004
+.const JMP_RECYCLE = 0x1000
+.const JMP_TASK = 0x1c00
+
+.assert_pc 0x0000
+reset_vector:
+	jump initialization, JMP_VECTOR
+	nop
+	nop
+
+.assert_pc 0x000c
+debug_vector:
+	jump debug_save, JMP_VECTOR
+	nop
+	nop
+
+.assert_pc 0x0018
+initialization:
+	ld32.abs r1, GLOBAL_REGS + 0x4
+	ld64.abs r2, GLOBAL_REGS + 0x8
+	op09 0x0, 0x0
+	ld64.abs r4, GLOBAL_REGS + 0x10
+	ld64.abs r6, GLOBAL_REGS + 0x18
+	op02 0, 9, 0, 30, 5, 1
+	field.2b r9, r9, 0, 16, 0, 0
+	op08 0x400, 0x0
+	movi r8, 0x17
+	op33 0, 8, 9, 0, 3, 0
+	field.2b r13, r19, 0, 14, 0, 0
+	movi r12, 0x3fff
+	alu.sub r0, r13, 12, 8, 0, 0
+	jump initialization_done, JMP_INIT_EXIT
+	field.2a r13, r8, 0, 6, 14, 0
+	movi r12, 0x0
+	op08 0x400, 0x0
+	movi r8, 0x30
+	op33 0, 8, 12, 8, 6, 0
+
+.assert_pc 0x0064
+initialization_done:
+	op08 0x0, 0x0
+
+.assert_pc 0x0068
+debug_save:
+	st32.abs r0, DEBUG_REGS + 0x0
+	st32.abs r1, DEBUG_REGS + 0x4
+	st64.abs r2, DEBUG_REGS + 0x8
+	st64.abs r4, DEBUG_REGS + 0x10
+	st64.abs r6, DEBUG_REGS + 0x18
+	st64.abs r8, DEBUG_REGS + 0x20
+	st64.abs r10, DEBUG_REGS + 0x28
+	st64.abs r12, DEBUG_REGS + 0x30
+	st64.abs r14, DEBUG_REGS + 0x38
+	st64.abs r16, DEBUG_REGS + 0x40
+	st64.abs r18, DEBUG_REGS + 0x48
+	st64.abs r20, DEBUG_REGS + 0x50
+	st64.abs r22, DEBUG_REGS + 0x58
+	st64.abs r24, DEBUG_REGS + 0x60
+	st64.abs r26, DEBUG_REGS + 0x68
+	st64.abs r28, DEBUG_REGS + 0x70
+	st64.abs r30, DEBUG_REGS + 0x78
+	op31 8, 0, 4, 0, 2, 1
+	field.2b r8, r8, 16, 5, 0, 0
+	st32.abs r8, TASK_INDEX + 0x0
+	branch label_00bc, BR_DEBUG
+
+.assert_pc 0x00bc
+label_00bc:
+	branch label_00c0, BR_DEBUG
+
+.assert_pc 0x00c0
+label_00c0:
+	branch label_00c4, BR_DEBUG
+
+.assert_pc 0x00c4
+label_00c4:
+	op30 0, 0, 0, 0, 0, 1
+	branch label_00cc, BR_DEBUG
+
+.assert_pc 0x00cc
+label_00cc:
+	branch label_00d0, BR_DEBUG
+
+.assert_pc 0x00d0
+label_00d0:
+	branch debug_restore, BR_DEBUG
+
+.assert_pc 0x00d4
+debug_restore:
+	ld32.abs r0, DEBUG_REGS + 0x0
+	ld32.abs r1, DEBUG_REGS + 0x4
+	ld64.abs r2, DEBUG_REGS + 0x8
+	ld64.abs r4, DEBUG_REGS + 0x10
+	ld64.abs r6, DEBUG_REGS + 0x18
+	ld64.abs r8, DEBUG_REGS + 0x20
+	ld64.abs r10, DEBUG_REGS + 0x28
+	ld64.abs r12, DEBUG_REGS + 0x30
+	ld64.abs r14, DEBUG_REGS + 0x38
+	ld64.abs r16, DEBUG_REGS + 0x40
+	ld64.abs r18, DEBUG_REGS + 0x48
+	ld64.abs r20, DEBUG_REGS + 0x50
+	ld64.abs r22, DEBUG_REGS + 0x58
+	ld64.abs r24, DEBUG_REGS + 0x60
+	ld64.abs r26, DEBUG_REGS + 0x68
+	ld64.abs r28, DEBUG_REGS + 0x70
+	ld64.abs r30, DEBUG_REGS + 0x78
+	nop
+	nop
+	nop
+	op08 0x1400, 0x1
+	nop
+	nop
+	nop
+
+.assert_pc 0x0134
+cpu_rx:
+	movi r12, 0x4
+	movi r8, 0x0
+	alu.mul r12, r12, 8, 0, 0, 1
+	alu.add r12, r8, 12, 0, 0, 0
+	movi r4, 0x1
+	nop
+	load r8, r12, 0x0, MEM32
+	alu.add r8, r8, 4, 0, 0, 0
+	store r8, r12, 0x0, MEM32
+	load r8, r12, 0x2, MEM_EXT32
+	alu.add r8, r8, 4, 0, 0, 1
+	store r8, r12, 0x2, MEM_EXT32
+	load r18, r16, 0x4, MEM_EXT64
+	load r14, r16, 0x0, MEM64
+	field.2b r8, r18, 18, 9, 0, 0
+	op02 8, 18, 2, 31, 16, 1
+	field.2b r24, r15, 22, 10, 0, 0
+	alu.shift r20, r8, 1, 0, 0, 1
+	movi r13, 0x0
+	movi r8, 0x0
+	alu.mul r13, r13, 8, 0, 0, 1
+	alu.add r8, r8, 13, 0, 0, 0
+	field.2b r12, r15, 0, 14, 0, 0
+	movi r22, 0x0
+	load r13, r8, 0x0, MEM32
+	alu.add r13, r13, 4, 0, 0, 0
+	store r13, r8, 0x0, MEM32
+	load r13, r8, 0x2, MEM_EXT32
+	alu.add r13, r13, 12, 0, 0, 0
+	alu.add r13, r13, 4, 0, 0, 1
+	store r13, r8, 0x2, MEM_EXT32
+	movi r23, 0x0
+	movi r14, 0x0
+	field.2a r10, r9, 0, 8, 6, 0
+	field.2a r22, r4, 0, 1, 31, 0
+	field.2a r22, r0, 0, 7, 6, 0
+	load r20, r9, 0x428, 0x5
+	movi r8, 0x0
+	movi r13, 0x0
+	field.2a r23, r0, 0, 1, 31, 0
+	field.2a r14, r11, 0, 9, 7, 0
+	field.2a r10, r24, 0, 10, 6, 0
+	field.2a r22, r0, 0, 6, 0, 0
+	field.2a r22, r20, 11, 5, 25, 0
+	field.2a r8, r19, 0, 18, 14, 0
+	field.2a r13, r15, 0, 14, 2, 0
+	field.2a r23, r0, 0, 1, 29, 0
+	load r21, r17, 0x2, MEM_EXT32
+	nop
+	branch rx_fifo_busy, BR_FIFO_BUSY
+	store r22, r17, 0x4, MEM_EXT64
+	store r8, r17, 0x0, MEM_EXT32
+	store r13, r17, 0x2, MEM_EXT32
+	movi r8, 0x400
+	alu.add r17, r17, 16, 0, 0, 1
+	movi r13, 0x1
+	alu.and r17, r17, 8, 0, 8, 0
+	movi r8, 0x0
+	alu.mul r13, r13, 8, 0, 0, 1
+	alu.add r8, r8, 13, 0, 0, 0
+	nop
+	nop
+	load r13, r8, 0x0, MEM32
+	alu.add r13, r13, 4, 0, 0, 0
+	store r13, r8, 0x0, MEM32
+	load r13, r8, 0x2, MEM_EXT32
+	alu.add r12, r13, 12, 0, 0, 0
+	alu.add r12, r12, 4, 0, 0, 1
+	store r12, r8, 0x2, MEM_EXT32
+
+.assert_pc 0x0248
+rx_recycle:
+	field.2a r10, r9, 0, 8, 6, 0
+	op33 0, 10, 0, 0, 9, 0
+	field.2a r18, r4, 0, 1, 31, 0
+	field.2a r15, r20, 11, 7, 14, 0
+	field.2a r10, r24, 0, 10, 6, 0
+	op09 0x0, 0x1347
+	op33 18, 10, 14, 16, 8, 0
+	nop
+
+.assert_pc 0x0268
+rx_fifo_busy:
+	movi r25, 0x3
+	movi r21, 0x0
+	alu.mul r25, r25, 8, 0, 0, 1
+	alu.add r21, r21, 25, 0, 0, 0
+	nop
+	nop
+	load r25, r21, 0x0, MEM32
+	alu.add r25, r25, 4, 0, 0, 0
+	store r25, r21, 0x0, MEM32
+	load r25, r21, 0x2, MEM_EXT32
+	alu.add r25, r25, 12, 0, 0, 0
+	alu.add r25, r25, 4, 0, 0, 1
+	store r25, r21, 0x2, MEM_EXT32
+	movi r21, 0x2
+	op30 0, 21, 16, 11, 2, 1
+	op09 0x0, 0x1f06
+	nop
+	nop
+	movi r12, 0x2
+	movi r8, 0x0
+	alu.mul r12, r12, 8, 0, 0, 1
+	alu.add r8, r8, 12, 0, 0, 0
+	load r20, r9, 0x428, 0x5
+	nop
+	load r12, r8, 0x0, MEM32
+	alu.add r12, r12, 4, 0, 0, 0
+	store r12, r8, 0x0, MEM32
+	load r12, r8, 0x2, MEM_EXT32
+	alu.add r12, r12, 4, 0, 0, 1
+	jump.reg r16, JMP_TASK
+	store r12, r8, 0x2, MEM_EXT32
+	movi r8, 0x12
+	jump rx_recycle, JMP_RECYCLE
+
+.assert_pc 0x02ec
+cpu_tx:
+	movi r10, 0x0
+	movi r11, 0x80
+	alu.mul r10, r10, 8, 0, 0, 1
+	alu.add r10, r11, 10, 0, 0, 0
+	movi r4, 0x1
+	nop
+	load r11, r10, 0x0, MEM32
+	alu.add r11, r11, 4, 0, 0, 0
+	store r11, r10, 0x0, MEM32
+	load r11, r10, 0x2, MEM_EXT32
+	alu.add r11, r11, 4, 0, 0, 1
+	store r11, r10, 0x2, MEM_EXT32
+	load r14, r8, 0x0, MEM64
+	load r12, r8, 0x4, MEM_EXT64
+	load r10, r9, 0x0, MEM32
+	op33 12, 10, 14, 16, 1, 0
+	op09 0x1, 0xec7
+	store r0, r8, 0x2, MEM_EXT32
+
+.assert_pc 0x334
+
+# Fill the rest of the 32 KiB instruction RAM with the documented NOP.
+.pad 0x8000

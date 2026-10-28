@@ -5269,6 +5269,7 @@ S:	Maintained
 T:	git https://github.com/broadcom/stblinux.git
 F:	Documentation/devicetree/bindings/arm/bcm/brcm,bcmbca.yaml
 F:	arch/arm64/boot/dts/broadcom/bcmbca/*
+F:	drivers/net/ethernet/broadcom/runner-asm/
 N:	bcmbca
 N:	bcm[9]?47622
 N:	bcm[9]?4912
