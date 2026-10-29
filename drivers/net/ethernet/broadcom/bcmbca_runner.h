@@ -20,6 +20,8 @@ struct bcmbca_runner_reduced_data {
 	u32 tx_descriptor;
 	u32 tx_destination;
 	unsigned int rx_fifo_size;
+	/* Zero for programs without packet notifications. */
+	u32 rx_irq_mailbox;
 };
 
 /* The caller owns the XRDP mapping, clocks, reset and access serialization. */
@@ -43,6 +45,9 @@ void bcmbca_runner_reduced_transmit(struct bcmbca_runner *runner, u16 head,
 				    unsigned int len, u16 destination);
 u16 bcmbca_runner_reduced_tx_length(struct bcmbca_runner *runner);
 u8 bcmbca_runner_reduced_tx_counter(struct bcmbca_runner *runner, u16 offset);
+void bcmbca_runner_reduced_irq_address(struct bcmbca_runner *runner, phys_addr_t addr);
+void bcmbca_runner_reduced_irq_enable(struct bcmbca_runner *runner, u32 mask);
+u32 bcmbca_runner_reduced_irq_count(struct bcmbca_runner *runner);
 
 static inline u16 bcmbca_runner_reduced_tx_length_word(unsigned int buffers,
 						       unsigned int len)
