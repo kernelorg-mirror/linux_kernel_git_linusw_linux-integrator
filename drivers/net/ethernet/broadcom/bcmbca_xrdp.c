@@ -49,6 +49,7 @@
 #define QUEUE_ISM		0x4
 #define QUEUE_IER		0x8
 #define QUEUE_ITR		0xc
+#define RX_QUEUE_IRQ		BIT(0)
 #define MIB_RX_PAUSE		0x40
 #define MIB_TX_PAUSE		0xb4
 #define MIB_CONTROL		0x180
@@ -122,6 +123,7 @@ static const struct bcmbca_xrdp_enet_variant bcm6846_variant = {
 		.tx_descriptor = 0x50,
 		.tx_destination = 0xdc,
 		.rx_fifo_size = 64,
+		.rx_irq_mailbox = 0x380,
 	},
 	.init_data = bcm6846_init_data,
 	.init_data_size = ARRAY_SIZE(bcm6846_init_data),
@@ -181,6 +183,13 @@ struct bcmbca_xrdp_enet {
 	u64 irq_test_events;
 	atomic_t timer_runs;
 	bool irq_ready;
+	/* Protected by irq_lock; writers of rx_irq also hold lock. */
+	bool rx_irq;
+	bool rx_active;
+	u32 rx_generation;
+	u32 rx_coalesce_usecs;
+	u64 rx_irq_polls;
+	u64 rx_polling_polls;
 	u64 sbpm_timeouts;
 	u64 sbpm_alloc_failures;
 	u64 rx_invalid_descriptors;
@@ -196,6 +205,12 @@ struct bcmbca_xrdp_enet {
 static void __iomem *bcmbca_xrdp_irq_base(struct bcmbca_xrdp_enet *enet)
 {
 	return enet->base + enet->variant->queue_intr;
+}
+
+/* Caller holds irq_lock. Tests and packet notifications never run together. */
+static u32 bcmbca_xrdp_irq_mask(struct bcmbca_xrdp_enet *enet)
+{
+	return enet->irq_test_bit | (enet->rx_irq ? RX_QUEUE_IRQ : 0);
 }
 
 static irqreturn_t bcmbca_xrdp_irq(int irq, void *data)
@@ -233,10 +248,14 @@ static irqreturn_t bcmbca_xrdp_irq(int irq, void *data)
 	pending &= ~enet->irq_test_bit;
 	if (pending) {
 		writel(enet->irq_test_bit, base + QUEUE_IER);
+		/* Clear ITR too: CPU-originated writes produce a level interrupt. */
+		writel(0, base + QUEUE_ITR);
 		writel(pending, base + QUEUE_ISR);
 		readl(base + QUEUE_IER);
 		enet->irq_events++;
 		enet->irq_seen |= pending;
+		enet->rx_generation++;
+		enet->rx_active = true;
 		schedule = true;
 	}
 out:
@@ -254,6 +273,8 @@ static void bcmbca_xrdp_irq_stop(struct bcmbca_xrdp_enet *enet)
 	spin_lock_irqsave(&enet->irq_lock, flags);
 	enet->irq_ready = false;
 	if (enet->hw_accessible) {
+		if (enet->variant->reduced.rx_irq_mailbox)
+			bcmbca_runner_reduced_irq_enable(&enet->runner, 0);
 		writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
 		writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_ITR);
 		readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
@@ -669,6 +690,8 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 	struct sk_buff *skb;
 	unsigned long flags;
 	unsigned int i, tx_work;
+	u32 rx_generation = 0;
+	bool receive, tx_pending = false;
 	int work_done = 0;
 
 	__skb_queue_head_init(&rx_queue);
@@ -677,14 +700,24 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 	if (enet->stopping || enet->faulted)
 		goto out;
 	spin_lock_irqsave(&enet->irq_lock, flags);
-	if (enet->irq_ready) {
+	receive = !enet->rx_irq || enet->rx_active;
+	rx_generation = enet->rx_generation;
+	if (budget && receive && enet->irq_ready) {
 		writel(enet->irq_test_bit, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
 		/* Clear old notifications before draining the SRAM FIFO. */
+		if (enet->rx_irq)
+			writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_ITR);
 		writel(~enet->irq_test_bit, bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
 	}
 	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	enet->poll_runs++;
-	for (; work_done < budget && !enet->faulted; work_done++)
+	if (budget && receive) {
+		if (enet->rx_irq)
+			enet->rx_irq_polls++;
+		else
+			enet->rx_polling_polls++;
+	}
+	for (; receive && work_done < budget && !enet->faulted; work_done++)
 		if (!bcmbca_xrdp_receive(enet, &rx_queue))
 			break;
 	if (budget && work_done == budget)
@@ -723,6 +756,8 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 			dev_consume_skb_any(skb);
 		}
 		netdev_completed_queue(port->ndev, packets, bytes);
+		tx_pending |= !skb_queue_empty(&port->tx_queue) ||
+			      port->tx_ring.producer != port->tx_ring.consumer;
 		if (skb_queue_len(&port->tx_queue) < TX_QUEUE_LEN / 2)
 			netif_wake_queue(port->ndev);
 	}
@@ -735,7 +770,7 @@ static int bcmbca_xrdp_poll(struct napi_struct *napi, int budget)
 		for (i = 0; i < variant->num_ports; i++)
 			if (enet->ports[i])
 				netif_stop_queue(enet->ports[i]->ndev);
-	} else if (budget && work_done < budget) {
+	} else if (budget && work_done < budget && (!enet->rx_irq || tx_pending)) {
 		/* Arm before releasing NAPI ownership, while remove is excluded. */
 		hrtimer_start(&enet->poll_timer, ns_to_ktime(POLL_INTERVAL_US * NSEC_PER_USEC),
 			      HRTIMER_MODE_REL);
@@ -748,8 +783,12 @@ out:
 	/* Completion can flush GRO and transmit replies, too. */
 	if (budget && work_done < budget && napi_complete_done(napi, work_done)) {
 		spin_lock_irqsave(&enet->irq_lock, flags);
-		if (enet->irq_ready) {
-			writel(U32_MAX, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+		if (enet->irq_ready && rx_generation == enet->rx_generation) {
+			/* Keep RX active across NAPI's bounded, deferred repolls. */
+			enet->rx_active = false;
+			/* Do not acknowledge here: arrivals during the drain stay pending. */
+			writel(bcmbca_xrdp_irq_mask(enet),
+			       bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
 			readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
 		}
 		spin_unlock_irqrestore(&enet->irq_lock, flags);
@@ -839,6 +878,8 @@ static int bcmbca_xrdp_open(struct net_device *ndev)
 	spin_unlock_bh(&enet->lock);
 	phylink_start(port->phylink);
 	netif_start_queue(ndev);
+	/* Resume completion service for credits left over from a close. */
+	napi_schedule(&enet->napi);
 	return 0;
 }
 
@@ -987,6 +1028,15 @@ static void bcmbca_xrdp_self_test(struct net_device *ndev,
 
 	/* Exercise the routing, independently of Runner packet notifications. */
 	mutex_lock(&enet->irq_test_lock);
+	spin_lock_irqsave(&enet->irq_lock, flags);
+	if (enet->rx_irq) {
+		spin_unlock_irqrestore(&enet->irq_lock, flags);
+		mutex_unlock(&enet->irq_test_lock);
+		data[0] = U32_MAX;
+		test->flags |= ETH_TEST_FL_FAILED;
+		return;
+	}
+	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	for (i = 0; i < QUEUE_IRQ_COUNT; i++) {
 		spin_lock_irqsave(&enet->irq_lock, flags);
 		if (!enet->irq_ready) {
@@ -1010,6 +1060,7 @@ static void bcmbca_xrdp_self_test(struct net_device *ndev,
 			readl(base + QUEUE_ISR);
 		}
 		enet->irq_test_bit = 0;
+		writel(0, base + QUEUE_IER);
 		spin_unlock_irqrestore(&enet->irq_lock, flags);
 		if (!delivered)
 			failed |= BIT(i);
@@ -1075,12 +1126,115 @@ static const char bcmbca_xrdp_sw_stats[][ETH_GSTRING_LEN] = {
 	"shared_poll_timer_runs",
 	"queue_irq_status",
 	"queue_irq_enable",
+	"rx_irq_mode",
+	"shared_rx_irq_polls",
+	"shared_rx_polling_polls",
+	"shared_runner_notifications",
 };
+
+static const char bcmbca_xrdp_priv_flags[][ETH_GSTRING_LEN] = {
+	"rx-irq",
+};
+
+static u32 bcmbca_xrdp_get_priv_flags(struct net_device *ndev)
+{
+	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
+
+	return READ_ONCE(port->enet->rx_irq);
+}
+
+/*
+ * The dummy netdevice owns the NAPI instance shared by all ports. Defer
+ * rearming for one empty poll, then leave RX asleep until the next IRQ.
+ */
+static void bcmbca_xrdp_set_irq_coalesce(struct bcmbca_xrdp_enet *enet)
+{
+	u32 usecs = enet->rx_irq ? enet->rx_coalesce_usecs : 0;
+
+	/* These settings are read locklessly by the NAPI core. */
+	WRITE_ONCE(enet->napi.gro_flush_timeout, usecs * NSEC_PER_USEC);
+	WRITE_ONCE(enet->napi.defer_hard_irqs, usecs ? 1 : 0);
+}
+
+static int bcmbca_xrdp_get_coalesce(struct net_device *ndev,
+				    struct ethtool_coalesce *ec,
+				    struct kernel_ethtool_coalesce *kernel_ec,
+				    struct netlink_ext_ack *extack)
+{
+	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
+
+	ec->rx_coalesce_usecs = READ_ONCE(port->enet->rx_coalesce_usecs);
+	return 0;
+}
+
+static int bcmbca_xrdp_set_coalesce(struct net_device *ndev,
+				    struct ethtool_coalesce *ec,
+				    struct kernel_ethtool_coalesce *kernel_ec,
+				    struct netlink_ext_ack *extack)
+{
+	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
+	struct bcmbca_xrdp_enet *enet = port->enet;
+
+	if (!enet->variant->reduced.rx_irq_mailbox || enet->num_irqs != QUEUE_IRQ_COUNT)
+		return -EOPNOTSUPP;
+	if (ec->rx_coalesce_usecs > POLL_INTERVAL_US)
+		return -EINVAL;
+	/* Serialize configuration through different ports of the same engine. */
+	netdev_lock(enet->napi_dev);
+	spin_lock_bh(&enet->lock);
+	WRITE_ONCE(enet->rx_coalesce_usecs, ec->rx_coalesce_usecs);
+	bcmbca_xrdp_set_irq_coalesce(enet);
+	spin_unlock_bh(&enet->lock);
+	netdev_unlock(enet->napi_dev);
+	return 0;
+}
+
+/* This setting applies to the shared RX FIFO, hence to all ports. */
+static int bcmbca_xrdp_set_priv_flags(struct net_device *ndev, u32 flags)
+{
+	struct bcmbca_xrdp_port *port = netdev_priv(ndev);
+	struct bcmbca_xrdp_enet *enet = port->enet;
+	unsigned long irqflags;
+	int ret = 0;
+
+	if (flags & ~BIT(0))
+		return -EINVAL;
+	if (!enet->variant->reduced.rx_irq_mailbox || enet->num_irqs != QUEUE_IRQ_COUNT)
+		return -EOPNOTSUPP;
+	mutex_lock(&enet->irq_test_lock);
+	netdev_lock(enet->napi_dev);
+	spin_lock_bh(&enet->lock);
+	spin_lock_irqsave(&enet->irq_lock, irqflags);
+	if (!enet->irq_ready || enet->stopping || enet->faulted) {
+		ret = -EIO;
+		goto out;
+	}
+	if (enet->rx_irq == !!flags)
+		goto out;
+	writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+	writel(0, bcmbca_xrdp_irq_base(enet) + QUEUE_ITR);
+	writel(U32_MAX, bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
+	WRITE_ONCE(enet->rx_irq, !!flags);
+	bcmbca_xrdp_set_irq_coalesce(enet);
+	bcmbca_runner_reduced_irq_enable(&enet->runner, flags ? RX_QUEUE_IRQ : 0);
+	/* Start a drain on transition; subsequent RX batches require an IRQ. */
+	enet->rx_generation++;
+	enet->rx_active = true;
+	napi_schedule(&enet->napi);
+out:
+	spin_unlock_irqrestore(&enet->irq_lock, irqflags);
+	spin_unlock_bh(&enet->lock);
+	netdev_unlock(enet->napi_dev);
+	mutex_unlock(&enet->irq_test_lock);
+	return ret;
+}
 
 static int bcmbca_xrdp_get_sset_count(struct net_device *ndev, int sset)
 {
 	if (sset == ETH_SS_TEST)
 		return ARRAY_SIZE(bcmbca_xrdp_tests);
+	if (sset == ETH_SS_PRIV_FLAGS)
+		return ARRAY_SIZE(bcmbca_xrdp_priv_flags);
 	if (sset != ETH_SS_STATS)
 		return -EOPNOTSUPP;
 	return ARRAY_SIZE(bcmbca_xrdp_mib_stats) + ARRAY_SIZE(bcmbca_xrdp_sw_stats);
@@ -1090,6 +1244,10 @@ static void bcmbca_xrdp_get_strings(struct net_device *ndev, u32 sset, u8 *data)
 {
 	unsigned int i;
 
+	if (sset == ETH_SS_PRIV_FLAGS) {
+		memcpy(data, bcmbca_xrdp_priv_flags, sizeof(bcmbca_xrdp_priv_flags));
+		return;
+	}
 	if (sset == ETH_SS_TEST) {
 		memcpy(data, bcmbca_xrdp_tests, sizeof(bcmbca_xrdp_tests));
 		return;
@@ -1144,11 +1302,20 @@ static void bcmbca_xrdp_get_stats(struct net_device *ndev,
 	data[i++] = (u32)atomic_read(&enet->timer_runs);
 	data[i++] = readl(bcmbca_xrdp_irq_base(enet) + QUEUE_ISR);
 	data[i++] = readl(bcmbca_xrdp_irq_base(enet) + QUEUE_IER);
+	data[i++] = enet->rx_irq;
+	data[i++] = enet->rx_irq_polls;
+	data[i++] = enet->rx_polling_polls;
+	data[i++] = bcmbca_runner_reduced_irq_count(&enet->runner);
 	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	spin_unlock_bh(&enet->lock);
 }
 
 static const struct ethtool_ops bcmbca_xrdp_ethtool_ops = {
+	.supported_coalesce_params = ETHTOOL_COALESCE_RX_USECS,
+	.get_coalesce = bcmbca_xrdp_get_coalesce,
+	.set_coalesce = bcmbca_xrdp_set_coalesce,
+	.get_priv_flags = bcmbca_xrdp_get_priv_flags,
+	.set_priv_flags = bcmbca_xrdp_set_priv_flags,
 	.get_link = ethtool_op_get_link,
 	.get_link_ksettings = bcmbca_xrdp_get_link_ksettings,
 	.set_link_ksettings = bcmbca_xrdp_set_link_ksettings,
@@ -1404,6 +1571,9 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	ret = bcmbca_xrdp_hw_init(enet);
 	if (ret)
 		goto put_ports;
+	if (variant->reduced.rx_irq_mailbox)
+		bcmbca_runner_reduced_irq_address(&enet->runner,
+						  res->start + variant->queue_intr + QUEUE_ITR);
 	/* The common reset must precede every per-PHY calibration/attach. */
 	if (variant == &bcm6846_variant) {
 		ret = bcm6846_xrdp_phy_init(enet, ports);
@@ -1422,6 +1592,8 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	ret = bcmbca_xrdp_irq_init(pdev);
 	if (ret)
 		goto destroy_ports;
+	enet->rx_irq = variant->reduced.rx_irq_mailbox && enet->num_irqs == QUEUE_IRQ_COUNT;
+	enet->rx_active = enet->rx_irq;
 	for_each_available_child_of_node_scoped(ports, np) {
 		ret = bcmbca_xrdp_port_create(enet, np);
 		if (ret)
@@ -1432,6 +1604,8 @@ static int bcmbca_xrdp_probe(struct platform_device *pdev)
 	/* IRQ sources remain masked until the first NAPI pass completes. */
 	spin_lock_irqsave(&enet->irq_lock, flags);
 	enet->irq_ready = enet->num_irqs == QUEUE_IRQ_COUNT;
+	if (enet->rx_irq)
+		bcmbca_runner_reduced_irq_enable(&enet->runner, RX_QUEUE_IRQ);
 	spin_unlock_irqrestore(&enet->irq_lock, flags);
 	napi_schedule(&enet->napi);
 	return 0;

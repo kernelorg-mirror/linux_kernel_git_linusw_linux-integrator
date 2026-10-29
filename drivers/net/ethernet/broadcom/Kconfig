@@ -81,7 +81,8 @@ config BCMBCA_XRDP_ETH
 	help
 	  Ethernet support for the BCMBCA XRDP packet engine using Broadcom's
 	  reduced Runner program and on-chip packet SRAM. Currently supports
-	  BCM6846. Packet transfers use polling.
+	  BCM6846. Receive uses queue interrupts when available, with a polling
+	  fallback. Transmit completion is polled.
 	  Firmware must have configured pin multiplexing and external PHYs
 	  before Linux starts.
 

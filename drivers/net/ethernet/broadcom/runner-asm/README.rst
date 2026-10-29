@@ -12,8 +12,9 @@ set, conditional patching language or Berkeley DB dependency.
 This is an encoding assembler for the supplied single-issue BCM6846 image,
 not a complete description of the Runner ISA or an ACE-compatible assembler.
 The instruction forms below distinguish decoded operands from fields whose
-meaning remains unresolved. In particular, a byte-identical rebuild does
-not establish how to issue a packet notification. Do not use the unresolved
+meaning remains unresolved. The notification extension below reuses an observed external write.
+Packet notification delivery has been tested on BCM6846; the instruction
+is not a general-purpose DMA interface. Do not use the unresolved
 forms as documented peripheral operations, or assume compatibility with
 the dual-issue Runner in newer SoCs.
 
@@ -33,7 +34,8 @@ Run the host tests from the source tree with::
   python3 drivers/net/ethernet/broadcom/runner-asm/test.py \
     build-codex/drivers/net/ethernet/broadcom/runner-asm/runner-as
 
-The reference digest is for all 8192 big-endian instruction words, including
+After undoing the three-word notification hook and its extension in padding,
+the tests check this reference digest for all 8192 instruction words, including
 NOP padding, reconstructed from the original U-Boot register-write list::
 
   924fa9aa8cd5c463a6e913ea7a441f06caad9b1a16b0efb92359245f320d8d6d
@@ -175,9 +177,82 @@ notification sequence at 0x6848 stores r8 through r14, followed at 0x684c
 by class 0x35, with fields d=14, a=18, b=4, x=8, y=0, m=1. The sequence
 recurs at 0x688c/0x6890. This suggests an external write of a four-byte
 mask, but the field interpretation and completion rules are not proven.
-It is not an instruction form implemented by this assembler yet.
+The assembler names this form ``write.ext``, with the same six encoding
+fields as the ALU forms. Its register operands and control fields are copied
+unchanged in the notification extension. The name describes the inferred
+operation; it does not specify the remaining class 0x35 modes.
 
-Peripheral command encodings, descriptor publication ordering and interrupt
-acknowledgment still need investigation and hardware testing. This
-conversion intentionally preserves the original program and polling
-fallback; it does not add packet-generated interrupts.
+RX notification extension
+-------------------------
+
+The hook at PC 0x23c transfers to 0x334 with two NOP delay slots, using
+control 0x1400 as in the reset vector and PON coalescing loop. The three
+displaced counter instructions execute first. The FIFO descriptor has
+already been published, and its existing producer update is unchanged.
+All other original instructions and task entry addresses remain unchanged.
+The extension preserves r8, r14 and r18/r19, copies the vendor notification
+sequence, then returns to the original recycling path at 0x248. It never
+runs on the FIFO-full branch. The zero-enable branch uses the original
+initialization routine's compare/equal-jump encoding.
+
+The SRAM mailbox occupies previously unused space between the debug save
+area (0x2c0..0x33f) and the descriptor FIFO (0x800..0xbff):
+
+=========== ============================================================
+Offset      Contents
+=========== ============================================================
+0x380       Host enable word: zero or queue-0 mask (1)
+0x384       Runner-owned notification mask, retained until reset
+0x388       Queue ITR physical address, low word followed by high word
+0x390       Runner count of issued notification instructions
+0x3a0..3af  RX task's saved r8, r14, r18 and r19
+=========== ============================================================
+
+All words use Runner big-endian SRAM order. The host initializes the
+address pair before enabling notifications. The mask is immutable while
+notifications are enabled and remains valid after disabling them; the
+extension does not need to reuse a DMA source buffer before completion.
+Only the RX task uses the save area. TX and debug retain their old ABI.
+
+Packet-generated interrupts, patterned traffic and interface restarts
+have been tested on BCM6846. The attempt counter alone proves only
+execution past the write instruction, not arrival at the host. These
+tests do not establish a general Runner memory barrier, external-write
+completion semantics or a full ISA specification.
+
+The driver's shared ``rx-irq`` ethtool private flag defaults on when the
+Runner mailbox and all queue interrupts are available. Older device trees
+without interrupts retain timer-driven receive. Queue 0 starts an RX NAPI
+batch. TX timers cannot start a new RX batch. The host masks
+notifications and clears ITR/ISR before draining, then unmasks after NAPI
+completion without clearing arrivals during the drain. Full-budget polls
+and deferred NAPI repolls retain RX ownership. TX completion polling
+remains available only while TX work is outstanding. Turning the flag off
+restores 1-ms RX polling.
+The synthetic IRQ self-test is refused while IRQ receive is enabled so
+that it cannot masquerade as packet notifications.
+
+The shared ethtool ``rx-usecs`` setting controls NAPI software IRQ
+coalescing, with a default of zero and a range of 0..1000 microseconds.
+The first IRQ schedules NAPI immediately. Subsequent polls may defer IRQ
+rearming for the configured interval; one empty poll ends the batch.
+Zero disables deferral. Coalescing is inactive in polling mode. Because
+the engine has one NAPI instance, configuring any MAC port changes the
+setting for all ports, including the DSA conduit.
+
+For a direct test, enable the flag on the MAC netdevice (the DSA conduit
+for a switch port)::
+
+  ethtool -C eth0 rx-usecs 50
+  ethtool --set-priv-flags eth0 rx-irq on
+  ethtool -S eth0
+
+Require increasing ``shared_runner_notifications``,
+``shared_queue_irq_events`` and ``shared_rx_irq_polls``, unchanged
+``shared_rx_polling_polls`` and ``shared_irq_test_events``, and successful
+patterned traffic. Test sparse packets after idle, sustained RX, full
+budgets, bidirectional traffic and interface restart recovery. Compare RX
+throughput, UDP loss, socket drops and CPU consumption with the flag off,
+with IRQ receive and zero deferral, and with IRQ coalescing using the same
+image. A timer still services TX: its counter alone does not indicate RX
+fallback.

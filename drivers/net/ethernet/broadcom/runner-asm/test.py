@@ -38,11 +38,36 @@ class AssemblerTest(unittest.TestCase):
     def test_vendor_image(self):
         # Digest of instruction RAM reconstructed independently from the
         # original data_path_6846.c writes, including its NOP fill.
-        data = self.assemble(SOURCE.read_text())
+        data = bytearray(self.assemble(SOURCE.read_text()))
         self.assertEqual(len(data), 32768)
+        # The notification hook displaces exactly these three counter
+        # instructions to the old start of padding. All other old code,
+        # including the FIFO publication and task entry PCs, must match.
+        displaced = struct.pack(">3I", 0x80c68180, 0x82c60080, 0x36c40026)
+        self.assertEqual(data[0x334:0x340], displaced)
+        self.assertEqual(data[0x23c:0x248],
+                         struct.pack(">3I", 0x068000cd, 0xfc000000, 0xfc000000))
+        data[0x23c:0x248] = displaced
+        data[0x334:] = struct.pack(">I", 0xfc000000) * ((32768 - 0x334) // 4)
         self.assertEqual(hashlib.sha256(data).hexdigest(),
                          "924fa9aa8cd5c463a6e913ea7a441f06ca"
                          "ad9b1a16b0efb92359245f320d8d6d")
+
+    def test_notification_vector(self):
+        # Independent PON_6846 image 1 instructions at 0x6848/0x684c.
+        self.assemble("store r8, r14, 0, 2\n"
+                      "write.ext r14, r18, 4, 8, 0, 1\n",
+                      [0x34870002, 0xd6e92080])
+
+    def test_notification_restore(self):
+        data = self.assemble(SOURCE.read_text())
+        words = struct.unpack(">8192I", data)
+        self.assertEqual(words.count(0xd6e92080), 1)
+        # The notification path must restore the RX packet state and
+        # branch back with two NOP delay slots, never fall into padding.
+        restore = struct.pack(">6I", 0x32803a02, 0x32e03a42, 0x33203a83,
+                              0x06800092, 0xfc000000, 0xfc000000)
+        self.assertIn(restore, data[0x334:0x400])
 
     def test_vendor_vectors(self):
         self.assemble("jump init, 0x1400\nnop\nnop\n"

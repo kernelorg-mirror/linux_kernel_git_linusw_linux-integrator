@@ -22,6 +22,11 @@
 .const JMP_INIT_EXIT = 0x1004
 .const JMP_RECYCLE = 0x1000
 .const JMP_TASK = 0x1c00
+.const RX_IRQ_ENABLE = 0x380
+.const RX_IRQ_MASK = 0x384
+.const RX_IRQ_ADDRESS = 0x388
+.const RX_IRQ_COUNT = 0x390
+.const RX_IRQ_SAVE = 0x3a0
 
 .assert_pc 0x0000
 reset_vector:
@@ -201,9 +206,10 @@ cpu_rx:
 	alu.add r13, r13, 4, 0, 0, 0
 	store r13, r8, 0x0, MEM32
 	load r13, r8, 0x2, MEM_EXT32
-	alu.add r12, r13, 12, 0, 0, 0
-	alu.add r12, r12, 4, 0, 0, 1
-	store r12, r8, 0x2, MEM_EXT32
+	.assert_pc 0x23c
+	jump rx_notify, JMP_VECTOR
+	nop
+	nop
 
 .assert_pc 0x0248
 rx_recycle:
@@ -274,6 +280,44 @@ cpu_tx:
 	store r0, r8, 0x2, MEM_EXT32
 
 .assert_pc 0x334
+
+# Finish the displaced counter update after publishing the RX descriptor.
+# Keep the original task entry points and recycle path at their ABI PCs.
+rx_notify:
+	alu.add r12, r13, 12, 0, 0, 0
+	alu.add r12, r12, 4, 0, 0, 1
+	store r12, r8, 0x2, MEM_EXT32
+	st32.abs r8, RX_IRQ_SAVE
+	st32.abs r14, RX_IRQ_SAVE + 4
+	st64.abs r18, RX_IRQ_SAVE + 8
+	ld32.abs r8, RX_IRQ_ENABLE
+	nop
+	nop
+	alu.sub r0, r8, 0, 8, 0, 0
+	jump rx_notify_done, JMP_INIT_EXIT
+	movi r14, RX_IRQ_MASK
+	ld64.abs r18, RX_IRQ_ADDRESS
+	nop
+	nop
+# PON_6846 image 1, 0x6848/0x684c: store a mask, then send four bytes
+# to the host-supplied queue ITR address. Keep its original control fields.
+# The mask remains in SRAM until reset, including after disabling IRQ RX.
+	store r8, r14, 0, MEM32
+	write.ext r14, r18, 4, 8, 0, 1
+	nop
+	nop
+	ld32.abs r8, RX_IRQ_COUNT
+	nop
+	nop
+	alu.add r8, r8, 4, 0, 0, 0
+	st32.abs r8, RX_IRQ_COUNT
+rx_notify_done:
+	ld32.abs r8, RX_IRQ_SAVE
+	ld32.abs r14, RX_IRQ_SAVE + 4
+	ld64.abs r18, RX_IRQ_SAVE + 8
+	jump rx_recycle, JMP_VECTOR
+	nop
+	nop
 
 # Fill the rest of the 32 KiB instruction RAM with the documented NOP.
 .pad 0x8000

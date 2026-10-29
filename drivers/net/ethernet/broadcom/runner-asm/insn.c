@@ -59,6 +59,8 @@ static const struct opcode opcodes[] = {
 	{ "op30", 0xc0000000, NORMAL, 6, ALU_FIELDS },
 	{ "op31", 0xc4000000, NORMAL, 6, ALU_FIELDS },
 	{ "op33", 0xcc000000, NORMAL, 6, ALU_FIELDS },
+	/* PON_6846 interrupt-mask transfer; control operands remain explicit. */
+	{ "write.ext", 0xd4000000, NORMAL, 6, ALU_FIELDS },
 };
 
 static uint32_t field_value(uint32_t value, struct field field)

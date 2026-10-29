@@ -21,6 +21,9 @@
 #define RUNNER_ENABLE		BIT(0)
 #define RUNNER_WAKEUP		0x4
 #define CPU_TX_THREAD		1
+#define RX_IRQ_ENABLE		0x0
+#define RX_IRQ_ADDRESS		0x8
+#define RX_IRQ_COUNT		0x10
 
 void bcmbca_runner_stop(struct bcmbca_runner *runner)
 {
@@ -106,4 +109,30 @@ u16 bcmbca_runner_reduced_tx_length(struct bcmbca_runner *runner)
 u8 bcmbca_runner_reduced_tx_counter(struct bcmbca_runner *runner, u16 offset)
 {
 	return readb(runner->base + runner->data->sram + offset);
+}
+
+static void __iomem *bcmbca_runner_reduced_irq_mailbox(struct bcmbca_runner *runner)
+{
+	return runner->base + runner->data->sram + runner->reduced->rx_irq_mailbox;
+}
+
+void bcmbca_runner_reduced_irq_address(struct bcmbca_runner *runner, phys_addr_t addr)
+{
+	void __iomem *mailbox = bcmbca_runner_reduced_irq_mailbox(runner);
+
+	/* Same low-word-first address pair as the vendor CPU RX ABI. */
+	iowrite32be(lower_32_bits(addr), mailbox + RX_IRQ_ADDRESS);
+	iowrite32be(upper_32_bits(addr), mailbox + RX_IRQ_ADDRESS + 4);
+}
+
+void bcmbca_runner_reduced_irq_enable(struct bcmbca_runner *runner, u32 mask)
+{
+	iowrite32be(mask, bcmbca_runner_reduced_irq_mailbox(runner) + RX_IRQ_ENABLE);
+}
+
+u32 bcmbca_runner_reduced_irq_count(struct bcmbca_runner *runner)
+{
+	if (!runner->reduced->rx_irq_mailbox)
+		return 0;
+	return ioread32be(bcmbca_runner_reduced_irq_mailbox(runner) + RX_IRQ_COUNT);
 }
