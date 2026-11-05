@@ -17,6 +17,9 @@ properties:
       - brcm,bcm7278-rng200
       - brcm,iproc-rng200
 
+  power-domains:
+    maxItems: 1
+
   reg:
     maxItems: 1
 
