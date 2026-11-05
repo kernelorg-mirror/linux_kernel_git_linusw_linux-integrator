@@ -37,6 +37,9 @@ properties:
           - const: arm,pl080
           - const: arm,primecell
 
+  power-domains:
+    maxItems: 1
+
   reg:
     maxItems: 1
     description: Address range of the PL08x registers
