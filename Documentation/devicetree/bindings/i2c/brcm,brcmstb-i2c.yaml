@@ -19,6 +19,9 @@ properties:
       - brcm,brcmstb-i2c
       - brcm,brcmper-i2c
 
+  power-domains:
+    maxItems: 1
+
   reg:
     minItems: 1
     items:
