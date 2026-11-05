@@ -57,6 +57,9 @@ properties:
               - brcm,bcm6855-hsspi
           - const: brcm,bcmbca-hsspi-v1.1
 
+  power-domains:
+    maxItems: 1
+
   reg:
     items:
       - description: main registers
