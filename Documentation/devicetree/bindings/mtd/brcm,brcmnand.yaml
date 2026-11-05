@@ -73,6 +73,9 @@ properties:
           - const: brcm,brcmnand-v4.0
           - const: brcm,brcmnand
 
+  power-domains:
+    maxItems: 1
+
   reg:
     minItems: 1
     maxItems: 6
