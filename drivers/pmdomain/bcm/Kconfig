@@ -31,6 +31,16 @@ config BCM_PMB
 	  This enables support for the Broadcom's PMB (Power Management Bus) that
 	  is used for disabling and enabling SoC devices.
 
+config BCMBCA_PMB_POWER
+	bool "Broadcom BCMBCA PMB power domains"
+	depends on MFD_BCMBCA_PMB
+	depends on PM
+	default MFD_BCMBCA_PMB
+	select PM_GENERIC_DOMAINS
+	help
+	  Provide power domains for BCM6846 blocks through the shared PMC3
+	  Processor Monitor Bus regmap, including the XRDP packet processor.
+
 config BCM63XX_POWER
 	bool "BCM63xx power domain driver"
 	depends on BMIPS_GENERIC || (COMPILE_TEST && OF)
