@@ -70,10 +70,17 @@ static const char * const mali_c55_clk_names[MALI_C55_NUM_CLKS] = {
 	"hclk",
 };
 
+/*
+ * The reset bulk API asserts the resets in array order and deasserts them in
+ * reverse order. The video core reset (vresetn) must be asserted last, after
+ * the register (hresetn) and AXI (aresetn) interface resets. Otherwise the
+ * ISP can be left in a state where the first register access after the next
+ * power-on stalls the bus.
+ */
 static const char * const mali_c55_reset_names[MALI_C55_NUM_RESETS] = {
-	"vresetn",
-	"aresetn",
 	"hresetn",
+	"aresetn",
+	"vresetn",
 };
 
 /*
