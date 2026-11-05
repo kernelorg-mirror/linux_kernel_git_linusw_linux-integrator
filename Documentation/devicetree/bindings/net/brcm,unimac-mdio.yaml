@@ -28,6 +28,9 @@ properties:
       - brcm,unimac-mdio
       - brcm,bcm6846-mdio
 
+  power-domains:
+    maxItems: 1
+
   reg:
     minItems: 1
     items:
