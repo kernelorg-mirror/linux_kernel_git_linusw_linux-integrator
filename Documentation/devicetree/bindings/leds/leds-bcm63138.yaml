@@ -32,6 +32,9 @@ properties:
           - const: brcm,bcm63138-leds
       - const: brcm,bcm63138-leds
 
+  power-domains:
+    maxItems: 1
+
   reg:
     maxItems: 1
 
