@@ -34,6 +34,9 @@ properties:
 
   little-endian: true
 
+  power-domains:
+    maxItems: 1
+
   reg:
     minItems: 1
     description:
