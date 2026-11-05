@@ -20,6 +20,9 @@ properties:
       - brcm,bcm6345-wdt
       - brcm,bcm7038-wdt
 
+  power-domains:
+    maxItems: 1
+
   reg:
     maxItems: 1
 
