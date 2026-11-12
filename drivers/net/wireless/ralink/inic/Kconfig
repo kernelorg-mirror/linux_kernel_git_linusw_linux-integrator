@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config RALINK_INIC
+	tristate "Ralink RT2880 iNIC PCI support"
+	depends on PCI && CFG80211
+	select FW_LOADER
+	select CRC32
+	help
+	  Experimental FullMAC driver for the RT2880 PCI intelligent NIC
+	  (1814:0801). Supports one 2.4 GHz access point using the original
+	  PCI AP firmware. This is a different device from the RT2800
+	  supported by rt2x00.
+
+	  Requires ralink/rt2880-inic-ap.bin in /lib/firmware.
+
+	  To compile this driver as a module, choose M here. The module will
+	  be called ralink-inic.
