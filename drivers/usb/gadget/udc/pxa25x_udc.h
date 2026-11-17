@@ -101,6 +101,7 @@ struct pxa25x_udc {
 						vbus : 1,
 						pullup : 1,
 						has_cfr : 1,
+						is_ixp : 1,
 						req_pending : 1,
 						req_std : 1,
 						req_config : 1,

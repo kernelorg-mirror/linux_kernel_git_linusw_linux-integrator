@@ -11,6 +11,7 @@
 
 /* #define VERBOSE_DEBUG */
 
+#include <linux/bits.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
@@ -137,12 +138,9 @@
 
 #define UDCCS_IO_RFS	(1 << 0)	/* Receive FIFO service */
 #define UDCCS_IO_RPC	(1 << 1)	/* Receive packet complete */
-#ifdef CONFIG_ARCH_IXP4XX /* FIXME: is this right?, datasheed says '2' */
-#define UDCCS_IO_ROF	(1 << 3)	/* Receive overflow */
-#endif
-#ifdef CONFIG_ARCH_PXA
-#define UDCCS_IO_ROF	(1 << 2)	/* Receive overflow */
-#endif
+/* FIXME: IXP4xx datasheet says bit 2. */
+#define UDCCS_IO_ROF_IXP	BIT(3)	/* Receive overflow on IXP4xx */
+#define UDCCS_IO_ROF	BIT(2)	/* Receive overflow on PXA25x */
 #define UDCCS_IO_DME	(1 << 3)	/* DMA enable */
 #define UDCCS_IO_RNE	(1 << 6)	/* Receive FIFO not empty */
 #define UDCCS_IO_RSP	(1 << 7)	/* Receive short packet */
@@ -225,21 +223,6 @@ static const char driver_name [] = "pxa25x_udc";
 static const char ep0name [] = "ep0";
 
 
-#ifdef CONFIG_ARCH_IXP4XX
-
-/* cpu-specific register addresses are compiled in to this code */
-#ifdef CONFIG_ARCH_PXA
-#error "Can't configure both IXP and PXA"
-#endif
-
-/* IXP doesn't yet support <linux/clk.h> */
-#define clk_get(dev,name)	NULL
-#define clk_enable(clk)		do { } while (0)
-#define clk_disable(clk)	do { } while (0)
-#define clk_put(clk)		do { } while (0)
-
-#endif
-
 #include "pxa25x_udc.h"
 
 
@@ -298,6 +281,11 @@ static inline u32 udc_get_reg(struct pxa25x_udc *dev, u32 reg)
 	return readl(dev->regs + reg);
 }
 #endif
+
+static u32 udc_iso_rof(struct pxa25x_udc *dev)
+{
+	return dev->is_ixp ? UDCCS_IO_ROF_IXP : UDCCS_IO_ROF;
+}
 
 static void pio_irq_enable(struct pxa25x_ep *ep)
 {
@@ -668,15 +656,13 @@ write_ep0_fifo (struct pxa25x_ep *ep, struct pxa25x_request *req)
 		count = req->req.length;
 		done (ep, req, 0);
 		ep0_idle(ep->dev);
-#ifndef CONFIG_ARCH_IXP4XX
-#if 1
 		/* This seems to get rid of lost status irqs in some cases:
 		 * host responds quickly, or next request involves config
 		 * change automagic, or should have been hidden, or ...
 		 *
 		 * FIXME get rid of all udelays possible...
 		 */
-		if (count >= EP0_FIFO_SIZE) {
+		if (!dev->is_ixp && count >= EP0_FIFO_SIZE) {
 			count = 100;
 			do {
 				if ((udc_ep0_get_UDCCS(dev) & UDCCS0_OPR) != 0) {
@@ -688,8 +674,6 @@ write_ep0_fifo (struct pxa25x_ep *ep, struct pxa25x_request *req)
 				udelay(1);
 			} while (count);
 		}
-#endif
-#endif
 	} else if (ep->dev->req_pending)
 		ep0start(ep->dev, 0, "IN");
 	return is_short;
@@ -756,7 +740,7 @@ read_fifo (struct pxa25x_ep *ep, struct pxa25x_request *req)
 
 		/* iso is one request per packet */
 		if (ep->bmAttributes == USB_ENDPOINT_XFER_ISOC) {
-			if (udccs & UDCCS_IO_ROF)
+			if (udccs & udc_iso_rof(ep->dev))
 				req->req.status = -EHOSTUNREACH;
 			/* more like "is_done" */
 			is_short = 1;
@@ -1830,7 +1814,7 @@ static void handle_ep(struct pxa25x_ep *ep)
 			if (likely(ep->bmAttributes == USB_ENDPOINT_XFER_BULK))
 				tmp = UDCCS_BO_SST | UDCCS_BO_DME;
 			else
-				tmp = UDCCS_IO_ROF | UDCCS_IO_DME;
+				tmp = udc_iso_rof(ep->dev) | UDCCS_IO_DME;
 			tmp &= udccs;
 			if (likely(tmp))
 				udc_ep_set_UDCCS(ep, tmp);
@@ -2230,13 +2214,8 @@ static struct pxa25x_udc memory = {
 
 #define CP15R0_VENDOR_MASK	0xffffe000
 
-#if	defined(CONFIG_ARCH_PXA)
-#define CP15R0_XSCALE_VALUE	0x69052000	/* intel/arm/xscale */
-
-#elif	defined(CONFIG_ARCH_IXP4XX)
-#define CP15R0_XSCALE_VALUE	0x69054000	/* intel/arm/ixp4xx */
-
-#endif
+#define CP15R0_PXA_VALUE	0x69052000	/* intel/arm/xscale */
+#define CP15R0_IXP_VALUE	0x69054000	/* intel/arm/ixp4xx */
 
 #define CP15R0_PROD_MASK	0x000003f0
 #define PXA25x			0x00000100	/* and PXA26x */
@@ -2275,35 +2254,39 @@ static int pxa25x_udc_probe(struct platform_device *pdev)
 
 	/* insist on Intel/ARM/XScale */
 	asm("mrc p15, 0, %0, c0, c0" : "=r" (chiprev));
-	if ((chiprev & CP15R0_VENDOR_MASK) != CP15R0_XSCALE_VALUE) {
+	if ((chiprev & CP15R0_VENDOR_MASK) != CP15R0_PXA_VALUE &&
+	    (chiprev & CP15R0_VENDOR_MASK) != CP15R0_IXP_VALUE) {
 		pr_err("%s: not XScale!\n", driver_name);
 		return -ENODEV;
 	}
 
+	dev->is_ixp = (chiprev & CP15R0_VENDOR_MASK) == CP15R0_IXP_VALUE;
+
 	/* trigger chiprev-specific logic */
-	switch (chiprev & CP15R0_PRODREV_MASK) {
-#if	defined(CONFIG_ARCH_PXA)
-	case PXA255_A0:
+	switch (chiprev & (CP15R0_VENDOR_MASK | CP15R0_PRODREV_MASK)) {
+	case CP15R0_PXA_VALUE | PXA255_A0:
 		dev->has_cfr = 1;
 		break;
-	case PXA250_A0:
-	case PXA250_A1:
+	case CP15R0_PXA_VALUE | PXA250_A0:
+	case CP15R0_PXA_VALUE | PXA250_A1:
 		/* A0/A1 "not released"; ep 13, 15 unusable */
 		fallthrough;
-	case PXA250_B2: case PXA210_B2:
-	case PXA250_B1: case PXA210_B1:
-	case PXA250_B0: case PXA210_B0:
+	case CP15R0_PXA_VALUE | PXA250_B2:
+	case CP15R0_PXA_VALUE | PXA210_B2:
+	case CP15R0_PXA_VALUE | PXA250_B1:
+	case CP15R0_PXA_VALUE | PXA210_B1:
+	case CP15R0_PXA_VALUE | PXA250_B0:
+	case CP15R0_PXA_VALUE | PXA210_B0:
 		/* OUT-DMA is broken ... */
 		fallthrough;
-	case PXA250_C0: case PXA210_C0:
+	case CP15R0_PXA_VALUE | PXA250_C0:
+	case CP15R0_PXA_VALUE | PXA210_C0:
 		break;
-#elif	defined(CONFIG_ARCH_IXP4XX)
-	case IXP425_A0:
-	case IXP425_B0:
-	case IXP465_AD:
+	case CP15R0_IXP_VALUE | IXP425_A0:
+	case CP15R0_IXP_VALUE | IXP425_B0:
+	case CP15R0_IXP_VALUE | IXP465_AD:
 		dev->has_cfr = 1;
 		break;
-#endif
 	default:
 		pr_err("%s: unrecognized processor: %08x\n",
 			driver_name, chiprev);
@@ -2319,9 +2302,14 @@ static int pxa25x_udc_probe(struct platform_device *pdev)
 	if (IS_ERR(dev->regs))
 		return PTR_ERR(dev->regs);
 
-	dev->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(dev->clk))
-		return PTR_ERR(dev->clk);
+	/* IXP4xx has no software-controlled UDC clock. */
+	if (dev->is_ixp) {
+		dev->clk = NULL;
+	} else {
+		dev->clk = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(dev->clk))
+			return PTR_ERR(dev->clk);
+	}
 
 	pr_debug("%s: IRQ %d%s%s\n", driver_name, irq,
 		dev->has_cfr ? "" : " (!cfr)",
